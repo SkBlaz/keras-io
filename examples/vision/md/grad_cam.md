@@ -11,19 +11,24 @@
 
 
 Adapted from Deep Learning with Python (2017).
+
 ---
 ## Setup
 
 
 ```python
+import os
+
+os.environ["KERAS_BACKEND"] = "tensorflow"
+
 import numpy as np
 import tensorflow as tf
-from tensorflow import keras
+import keras
 
 # Display
 from IPython.display import Image, display
+import matplotlib as mpl
 import matplotlib.pyplot as plt
-import matplotlib.cm as cm
 
 ```
 
@@ -54,7 +59,9 @@ display(Image(img_path))
 ```
 
 
+    
 ![jpeg](/img/examples/vision/grad_cam/grad_cam_4_0.jpg)
+    
 
 
 ---
@@ -65,9 +72,9 @@ display(Image(img_path))
 
 def get_img_array(img_path, size):
     # `img` is a PIL image of size 299x299
-    img = keras.preprocessing.image.load_img(img_path, target_size=size)
+    img = keras.utils.load_img(img_path, target_size=size)
     # `array` is a float32 Numpy array of shape (299, 299, 3)
-    array = keras.preprocessing.image.img_to_array(img)
+    array = keras.utils.img_to_array(img)
     # We add a dimension to transform our array into a "batch"
     # of size (1, 299, 299, 3)
     array = np.expand_dims(array, axis=0)
@@ -77,8 +84,8 @@ def get_img_array(img_path, size):
 def make_gradcam_heatmap(img_array, model, last_conv_layer_name, pred_index=None):
     # First, we create a model that maps the input image to the activations
     # of the last conv layer as well as the output predictions
-    grad_model = tf.keras.models.Model(
-        [model.inputs], [model.get_layer(last_conv_layer_name).output, model.output]
+    grad_model = keras.models.Model(
+        model.inputs, [model.get_layer(last_conv_layer_name).output, model.output]
     )
 
     # Then, we compute the gradient of the top predicted class for our input image
@@ -139,11 +146,15 @@ plt.show()
 
 <div class="k-default-codeblock">
 ```
-Predicted: [('n02504458', 'African_elephant', 9.862388)]
+ 1/1 ━━━━━━━━━━━━━━━━━━━━ 3s 3s/step
+
+Predicted: [('n02504458', 'African_elephant', 9.860664)]
 
 ```
 </div>
-![png](/img/examples/vision/grad_cam/grad_cam_8_1.png)
+    
+![png](/img/examples/vision/grad_cam/grad_cam_8_3.png)
+    
 
 
 ---
@@ -154,27 +165,27 @@ Predicted: [('n02504458', 'African_elephant', 9.862388)]
 
 def save_and_display_gradcam(img_path, heatmap, cam_path="cam.jpg", alpha=0.4):
     # Load the original image
-    img = keras.preprocessing.image.load_img(img_path)
-    img = keras.preprocessing.image.img_to_array(img)
+    img = keras.utils.load_img(img_path)
+    img = keras.utils.img_to_array(img)
 
     # Rescale heatmap to a range 0-255
     heatmap = np.uint8(255 * heatmap)
 
     # Use jet colormap to colorize heatmap
-    jet = cm.get_cmap("jet")
+    jet = mpl.colormaps["jet"]
 
     # Use RGB values of the colormap
     jet_colors = jet(np.arange(256))[:, :3]
     jet_heatmap = jet_colors[heatmap]
 
     # Create an image with RGB colorized heatmap
-    jet_heatmap = keras.preprocessing.image.array_to_img(jet_heatmap)
+    jet_heatmap = keras.utils.array_to_img(jet_heatmap)
     jet_heatmap = jet_heatmap.resize((img.shape[1], img.shape[0]))
-    jet_heatmap = keras.preprocessing.image.img_to_array(jet_heatmap)
+    jet_heatmap = keras.utils.img_to_array(jet_heatmap)
 
     # Superimpose the heatmap on original image
     superimposed_img = jet_heatmap * alpha + img
-    superimposed_img = keras.preprocessing.image.array_to_img(superimposed_img)
+    superimposed_img = keras.utils.array_to_img(superimposed_img)
 
     # Save the superimposed image
     superimposed_img.save(cam_path)
@@ -187,7 +198,9 @@ save_and_display_gradcam(img_path, heatmap)
 ```
 
 
+    
 ![jpeg](/img/examples/vision/grad_cam/grad_cam_10_0.jpg)
+    
 
 
 ---
@@ -214,12 +227,15 @@ print("Predicted:", decode_predictions(preds, top=2)[0])
 ```
 
 
+    
 ![jpeg](/img/examples/vision/grad_cam/grad_cam_12_0.jpg)
+    
 
 
 <div class="k-default-codeblock">
 ```
-Predicted: [('n02112137', 'chow', 4.611241), ('n02124075', 'Egyptian_cat', 4.3817368)]
+ 1/1 ━━━━━━━━━━━━━━━━━━━━ 0s 11ms/step
+Predicted: [('n02112137', 'chow', 4.610808), ('n02124075', 'Egyptian_cat', 4.3835773)]
 
 ```
 </div>
@@ -233,7 +249,9 @@ save_and_display_gradcam(img_path, heatmap)
 ```
 
 
+    
 ![jpeg](/img/examples/vision/grad_cam/grad_cam_14_0.jpg)
+    
 
 
 We generate class activation heatmap for "egyptian cat," the class index is 285
@@ -246,5 +264,11 @@ save_and_display_gradcam(img_path, heatmap)
 ```
 
 
+    
 ![jpeg](/img/examples/vision/grad_cam/grad_cam_16_0.jpg)
+    
 
+
+---
+## Relevant Chapters from Deep Learning with Python
+- [Chapter 10: Interpreting what ConvNets learn](https://deeplearningwithpython.io/chapters/chapter10_interpreting-what-convnets-learn)

@@ -4,7 +4,9 @@ Author: [Sayak Paul](https://twitter.com/RisingSayak)
 Date created: 2021/08/01
 Last modified: 2021/08/01
 Description: Training better student models via knowledge distillation with function matching.
+Accelerator: GPU
 """
+
 """
 ## Introduction
 
@@ -35,21 +37,17 @@ implemented in Keras, you can refer to
 You can also follow
 [this example](https://keras.io/examples/vision/consistency_training/)
 that shows an extension of knowledge distillation applied to consistency training.
-
-To follow this example, you will need TensorFlow 2.5 or higher as well as TensorFlow Addons,
-which can be installed using the command below:
-"""
-
-"""shell
-!pip install -q tensorflow-addons
 """
 
 """
 ## Imports
 """
 
-from tensorflow import keras
-import tensorflow_addons as tfa
+import os
+
+os.environ["KERAS_BACKEND"] = "tensorflow"
+
+import keras
 import tensorflow as tf
 
 import matplotlib.pyplot as plt
@@ -60,7 +58,7 @@ import tensorflow_datasets as tfds
 tfds.disable_progress_bar()
 
 """
-## Hyperparameters and contants
+## Hyperparameters and constants
 """
 
 AUTO = tf.data.AUTOTUNE  # Used to dynamically adjust parallelism.
@@ -136,8 +134,6 @@ This should generate a folder named `T-r101x3-128` which is essentially a teache
 [`SavedModel`](https://www.tensorflow.org/guide/saved_model).
 """
 
-import os
-
 os.environ["KAGGLE_USERNAME"] = ""  # TODO: enter your Kaggle user name here
 os.environ["KAGGLE_KEY"] = ""  # TODO: enter your Kaggle API key here
 
@@ -151,11 +147,10 @@ os.environ["KAGGLE_KEY"] = ""  # TODO: enter your Kaggle API key here
 
 # Since the teacher model is not going to be trained further we make
 # it non-trainable.
-teacher_model = keras.models.load_model(
+teacher_model = keras.layers.TFSMLayer(
     "/home/jupyter/keras-io/examples/keras_recipes/T-r101x3-128"
 )
 teacher_model.trainable = False
-teacher_model.summary()
 
 """
 ## The "function matching" recipe
@@ -291,7 +286,7 @@ on knowledge distillation.
 
 class Distiller(tf.keras.Model):
     def __init__(self, student, teacher):
-        super(Distiller, self).__init__()
+        super().__init__()
         self.student = student
         self.teacher = teacher
         self.loss_tracker = keras.metrics.Mean(name="distillation_loss")
@@ -303,9 +298,13 @@ class Distiller(tf.keras.Model):
         return metrics
 
     def compile(
-        self, optimizer, metrics, distillation_loss_fn, temperature=TEMPERATURE,
+        self,
+        optimizer,
+        metrics,
+        distillation_loss_fn,
+        temperature=TEMPERATURE,
     ):
-        super(Distiller, self).compile(optimizer=optimizer, metrics=metrics)
+        super().compile(optimizer=optimizer, metrics=metrics)
         self.distillation_loss_fn = distillation_loss_fn
         self.temperature = temperature
 
@@ -373,7 +372,7 @@ class WarmUpCosine(keras.optimizers.schedules.LearningRateSchedule):
     def __init__(
         self, learning_rate_base, total_steps, warmup_learning_rate, warmup_steps
     ):
-        super(WarmUpCosine, self).__init__()
+        super().__init__()
 
         self.learning_rate_base = learning_rate_base
         self.total_steps = total_steps
@@ -447,7 +446,7 @@ interested in finding out more.
 ## Training
 """
 
-optimizer = tfa.optimizers.AdamW(
+optimizer = keras.optimizers.AdamW(
     weight_decay=WEIGHT_DECAY, learning_rate=scheduled_lrs, clipnorm=CLIP_THRESHOLD
 )
 
@@ -487,12 +486,10 @@ will come into play. Let's investigate what the model trained for 1000 epochs ca
 !tar xf S-r50x1-128-1000.tar.gz
 """
 
-pretrained_student = keras.models.load_model("S-r50x1-128-1000")
-pretrained_student.summary()
+pretrained_student = keras.layers.TFSMLayer("S-r50x1-128-1000")
 
 """
-This model exactly follows what the authors have used in their student models. This is
-why the model summary is a bit different.
+This model exactly follows what the authors have used in their student models.
 """
 
 _, top1_accuracy = pretrained_student.evaluate(test_ds)
@@ -515,4 +512,9 @@ are encouraged to check
 [this repository](https://github.com/sayakpaul/FunMatch-Distillation)
 as it presents TPU-compatible training workflows for these recipes and can be run on
 [Kaggle Kernel](https://www.kaggle.com/kernels) leveraging their free TPU v3-8 hardware.
+"""
+
+"""
+## Relevant Chapters from Deep Learning with Python
+- [Chapter 18: Best practices for the real world](https://deeplearningwithpython.io/chapters/chapter18_best-practices-for-the-real-world)
 """

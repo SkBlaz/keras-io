@@ -2,8 +2,10 @@
 Title: Image Classification using BigTransfer (BiT)
 Author: [Sayan Nath](https://twitter.com/sayannath2350)
 Date created: 2021/09/24
-Last modified: 2021/09/24
+Last modified: 2024/01/03
 Description: BigTransfer (BiT) State-of-the-art transfer learning for image classification.
+Accelerator: GPU
+Converted to Keras 3 by: [Sitam Meur](https://github.com/sitamgithub-MSIT)
 """
 
 """
@@ -38,12 +40,16 @@ the curve below is a ResNet-50 pre-trained on ImageNet (ILSVRC-2012).
 ## Setup
 """
 
+import os
+
+os.environ["KERAS_BACKEND"] = "tensorflow"
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
+import keras
+from keras import ops
 import tensorflow as tf
-from tensorflow import keras
 import tensorflow_hub as hub
 import tensorflow_datasets as tfds
 
@@ -51,15 +57,16 @@ tfds.disable_progress_bar()
 
 SEEDS = 42
 
-np.random.seed(SEEDS)
-tf.random.set_seed(SEEDS)
+keras.utils.set_random_seed(SEEDS)
 
 """
 ## Gather Flower Dataset
 """
 
 train_ds, validation_ds = tfds.load(
-    "tf_flowers", split=["train[:85%]", "train[85%:]"], as_supervised=True,
+    "tf_flowers",
+    split=["train[:85%]", "train[85%:]"],
+    as_supervised=True,
 )
 
 """
@@ -111,19 +118,21 @@ Implementation in [Keras Coding Examples](https://keras.io/examples/vision/mixup
 
 SCHEDULE_LENGTH = SCHEDULE_LENGTH * 512 / BATCH_SIZE
 
+random_flip = keras.layers.RandomFlip("horizontal")
+random_crop = keras.layers.RandomCrop(CROP_TO, CROP_TO)
 
-@tf.function
+
 def preprocess_train(image, label):
-    image = tf.image.random_flip_left_right(image)
-    image = tf.image.resize(image, (RESIZE_TO, RESIZE_TO))
-    image = tf.image.random_crop(image, (CROP_TO, CROP_TO, 3))
+    image = random_flip(image)
+    image = ops.image.resize(image, (RESIZE_TO, RESIZE_TO))
+    image = random_crop(image)
     image = image / 255.0
     return (image, label)
 
 
-@tf.function
 def preprocess_test(image, label):
-    image = tf.image.resize(image, (RESIZE_TO, RESIZE_TO))
+    image = ops.image.resize(image, (RESIZE_TO, RESIZE_TO))
+    image = ops.cast(image, dtype="float32")
     image = image / 255.0
     return (image, label)
 
@@ -173,7 +182,7 @@ for n in range(25):
 """
 
 bit_model_url = "https://tfhub.dev/google/bit/m-r50x1/1"
-bit_module = hub.KerasLayer(bit_model_url)
+bit_module = hub.load(bit_model_url)
 
 """
 ## Create BigTransfer (BiT) model
@@ -293,4 +302,15 @@ and 97.0% on CIFAR-10 with 10 examples per class.
 
 You can experiment further with the BigTransfer Method by following the
 [original paper](https://arxiv.org/abs/1912.11370).
+
+
+**Example available on HuggingFace**
+| Trained Model | Demo |
+| :--: | :--: |
+| [![Generic badge](https://img.shields.io/badge/%F0%9F%A4%97%20Model-bit-black.svg)](https://huggingface.co/keras-io/bit) | [![Generic badge](https://img.shields.io/badge/%F0%9F%A4%97%20Spaces-bit-black.svg)](https://huggingface.co/spaces/keras-io/siamese-contrastive) |
+"""
+
+"""
+## Relevant Chapters from Deep Learning with Python
+- [Chapter 8: Image classification](https://deeplearningwithpython.io/chapters/chapter08_image-classification)
 """

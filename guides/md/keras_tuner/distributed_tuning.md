@@ -10,6 +10,11 @@
 
 
 
+
+```python
+!pip install keras-tuner -q
+```
+
 ---
 ## Introduction
 
@@ -86,26 +91,27 @@ is not supported, but support for this is on the roadmap.
 
 ### Example code
 
-When the enviroment variables described above are set, the example below will
+When the environment variables described above are set, the example below will
 run distributed tuning and use data parallelism within each trial via
 `tf.distribute`. The example loads MNIST from `tensorflow_datasets` and uses
-[Hyperband](https://arxiv.org/pdf/1603.06560.pdf) for the hyperparameter
+[Hyperband](https://arxiv.org/abs/1603.06560) for the hyperparameter
 search.
 
 
 ```python
 
-import keras_tuner as kt
+import keras
+import keras_tuner
 import tensorflow as tf
 import numpy as np
 
 
 def build_model(hp):
     """Builds a convolutional model."""
-    inputs = tf.keras.Input(shape=(28, 28, 1))
+    inputs = keras.Input(shape=(28, 28, 1))
     x = inputs
     for i in range(hp.Int("conv_layers", 1, 3, default=3)):
-        x = tf.keras.layers.Conv2D(
+        x = keras.layers.Conv2D(
             filters=hp.Int("filters_" + str(i), 4, 32, step=4, default=8),
             kernel_size=hp.Int("kernel_size_" + str(i), 3, 5),
             activation="relu",
@@ -113,20 +119,20 @@ def build_model(hp):
         )(x)
 
         if hp.Choice("pooling" + str(i), ["max", "avg"]) == "max":
-            x = tf.keras.layers.MaxPooling2D()(x)
+            x = keras.layers.MaxPooling2D()(x)
         else:
-            x = tf.keras.layers.AveragePooling2D()(x)
+            x = keras.layers.AveragePooling2D()(x)
 
-        x = tf.keras.layers.BatchNormalization()(x)
-        x = tf.keras.layers.ReLU()(x)
+        x = keras.layers.BatchNormalization()(x)
+        x = keras.layers.ReLU()(x)
 
     if hp.Choice("global_pooling", ["max", "avg"]) == "max":
-        x = tf.keras.layers.GlobalMaxPooling2D()(x)
+        x = keras.layers.GlobalMaxPooling2D()(x)
     else:
-        x = tf.keras.layers.GlobalAveragePooling2D()(x)
-    outputs = tf.keras.layers.Dense(10, activation="softmax")(x)
+        x = keras.layers.GlobalAveragePooling2D()(x)
+    outputs = keras.layers.Dense(10, activation="softmax")(x)
 
-    model = tf.keras.Model(inputs, outputs)
+    model = keras.Model(inputs, outputs)
 
     optimizer = hp.Choice("optimizer", ["adam", "sgd"])
     model.compile(
@@ -135,7 +141,7 @@ def build_model(hp):
     return model
 
 
-tuner = kt.Hyperband(
+tuner = keras_tuner.Hyperband(
     hypermodel=build_model,
     objective="val_accuracy",
     max_epochs=2,
@@ -147,7 +153,7 @@ tuner = kt.Hyperband(
     overwrite=True,
 )
 
-(x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
+(x_train, y_train), (x_test, y_test) = keras.datasets.mnist.load_data()
 
 # Reshape the images to have the channel dimension.
 x_train = (x_train.reshape(x_train.shape + (1,)) / 255.0)[:1000]
@@ -161,22 +167,21 @@ tuner.search(
     steps_per_epoch=600,
     validation_data=(x_test, y_test),
     validation_steps=100,
-    callbacks=[tf.keras.callbacks.EarlyStopping("val_accuracy")],
+    callbacks=[keras.callbacks.EarlyStopping("val_accuracy")],
 )
 ```
 
 <div class="k-default-codeblock">
 ```
-Trial 2 Complete [00h 00m 03s]
-val_accuracy: 0.4699999988079071
+Trial 2 Complete [00h 00m 18s]
+val_accuracy: 0.07000000029802322
 ```
 </div>
     
 <div class="k-default-codeblock">
 ```
-Best val_accuracy So Far: 0.5099999904632568
-Total elapsed time: 00h 00m 06s
-INFO:tensorflow:Oracle triggered exit
+Best val_accuracy So Far: 0.07000000029802322
+Total elapsed time: 00h 00m 26s
 
 ```
 </div>

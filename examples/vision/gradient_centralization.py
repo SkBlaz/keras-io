@@ -2,9 +2,13 @@
 Title: Gradient Centralization for Better Training Performance
 Author: [Rishit Dagli](https://github.com/Rishit-dagli)
 Date created: 06/18/21
-Last modified: 06/18/21
+Last modified: 05/29/25
 Description: Implement Gradient Centralization to improve training performance of DNNs.
+Accelerator: GPU
+Converted to Keras 3 by: [Muhammad Anas Raza](https://anasrz.com)
+Debugged by: [Alberto M. Esmorís](https://github.com/albertoesmp)
 """
+
 """
 ## Introduction
 
@@ -18,16 +22,11 @@ vectors to have zero mean. Gradient Centralization morever improves the Lipschit
 the loss function and its gradient so that the training process becomes more efficient
 and stable.
 
-This example requires TensorFlow 2.2 or higher as well as `tensorflow_datasets` which can
-be installed with this command:
+This example requires `tensorflow_datasets` which can be installed with this command:
 
 ```
 pip install tensorflow-datasets
 ```
-
-We will be implementing Gradient Centralization in this example but you could also use
-this very easily with a package I built,
-[gradient-centralization-tf](https://github.com/Rishit-dagli/Gradient-Centralization-TensorFlow).
 """
 
 """
@@ -36,10 +35,13 @@ this very easily with a package I built,
 
 from time import time
 
-import tensorflow as tf
+import keras
+from keras import layers
+from keras.optimizers import RMSprop
+from keras import ops
+
+from tensorflow import data as tf_data
 import tensorflow_datasets as tfds
-from tensorflow.keras import layers
-from tensorflow.keras.optimizers import RMSprop
 
 """
 ## Prepare the data
@@ -52,7 +54,7 @@ num_classes = 2
 input_shape = (300, 300, 3)
 dataset_name = "horses_or_humans"
 batch_size = 128
-AUTOTUNE = tf.data.AUTOTUNE
+AUTOTUNE = tf_data.AUTOTUNE
 
 (train_ds, test_ds), metadata = tfds.load(
     name=dataset_name,
@@ -73,13 +75,18 @@ We will rescale the data to `[0, 1]` and perform simple augmentations to our dat
 
 rescale = layers.Rescaling(1.0 / 255)
 
-data_augmentation = tf.keras.Sequential(
-    [
-        layers.RandomFlip("horizontal_and_vertical"),
-        layers.RandomRotation(0.3),
-        layers.RandomZoom(0.2),
-    ]
-)
+data_augmentation = [
+    layers.RandomFlip("horizontal_and_vertical"),
+    layers.RandomRotation(0.3),
+    layers.RandomZoom(0.2),
+]
+
+
+# Helper to apply augmentation
+def apply_aug(x):
+    for aug in data_augmentation:
+        x = aug(x)
+    return x
 
 
 def prepare(ds, shuffle=False, augment=False):
@@ -95,7 +102,7 @@ def prepare(ds, shuffle=False, augment=False):
     # Use data augmentation only on the training set
     if augment:
         ds = ds.map(
-            lambda x, y: (data_augmentation(x, training=True), y),
+            lambda x, y: (apply_aug(x), y),
             num_parallel_calls=AUTOTUNE,
         )
 
@@ -109,42 +116,45 @@ Rescale and augment the data
 
 train_ds = prepare(train_ds, shuffle=True, augment=True)
 test_ds = prepare(test_ds)
-
 """
 ## Define a model
 
 In this section we will define a Convolutional neural network.
 """
 
-model = tf.keras.Sequential(
-    [
-        layers.Conv2D(16, (3, 3), activation="relu", input_shape=(300, 300, 3)),
-        layers.MaxPooling2D(2, 2),
-        layers.Conv2D(32, (3, 3), activation="relu"),
-        layers.Dropout(0.5),
-        layers.MaxPooling2D(2, 2),
-        layers.Conv2D(64, (3, 3), activation="relu"),
-        layers.Dropout(0.5),
-        layers.MaxPooling2D(2, 2),
-        layers.Conv2D(64, (3, 3), activation="relu"),
-        layers.MaxPooling2D(2, 2),
-        layers.Conv2D(64, (3, 3), activation="relu"),
-        layers.MaxPooling2D(2, 2),
-        layers.Flatten(),
-        layers.Dropout(0.5),
-        layers.Dense(512, activation="relu"),
-        layers.Dense(1, activation="sigmoid"),
-    ]
-)
+
+def make_model():
+    return keras.Sequential(
+        [
+            layers.Input(shape=input_shape),
+            layers.Conv2D(16, (3, 3), activation="relu"),
+            layers.MaxPooling2D(2, 2),
+            layers.Conv2D(32, (3, 3), activation="relu"),
+            layers.Dropout(0.5),
+            layers.MaxPooling2D(2, 2),
+            layers.Conv2D(64, (3, 3), activation="relu"),
+            layers.Dropout(0.5),
+            layers.MaxPooling2D(2, 2),
+            layers.Conv2D(64, (3, 3), activation="relu"),
+            layers.MaxPooling2D(2, 2),
+            layers.Conv2D(64, (3, 3), activation="relu"),
+            layers.MaxPooling2D(2, 2),
+            layers.Flatten(),
+            layers.Dropout(0.5),
+            layers.Dense(512, activation="relu"),
+            layers.Dense(1, activation="sigmoid"),
+        ]
+    )
+
 
 """
 ## Implement Gradient Centralization
 
 We will now
 subclass the `RMSProp` optimizer class modifying the
-`tf.keras.optimizers.Optimizer.get_gradients()` method where we now implement Gradient
+`keras.optimizers.Optimizer.get_gradients()` method where we now implement Gradient
 Centralization. On a high level the idea is that let us say we obtain our gradients
-through back propogation for a Dense or Convolution layer we then compute the mean of the
+through back propagation for a Dense or Convolution layer we then compute the mean of the
 column vectors of the weight matrix, and then remove the mean from each column vector.
 
 The experiments in [this paper](https://arxiv.org/abs/2004.01461) on various
@@ -173,7 +183,7 @@ class GCRMSprop(RMSprop):
             grad_len = len(grad.shape)
             if grad_len > 1:
                 axis = list(range(grad_len - 1))
-                grad -= tf.reduce_mean(grad, axis=axis, keep_dims=True)
+                grad -= ops.mean(grad, axis=axis, keep_dims=True)
             grads.append(grad)
 
         return grads
@@ -190,7 +200,7 @@ Gradient Centralization on the model we built above.
 """
 
 
-class TimeHistory(tf.keras.callbacks.Callback):
+class TimeHistory(keras.callbacks.Callback):
     def on_train_begin(self, logs={}):
         self.times = []
 
@@ -209,6 +219,7 @@ compare to the training performance of the model trained with Gradient Centraliz
 """
 
 time_callback_no_gc = TimeHistory()
+model = make_model()
 model.compile(
     loss="binary_crossentropy",
     optimizer=RMSprop(learning_rate=1e-4),
@@ -234,6 +245,7 @@ notice our optimizer is the one using Gradient Centralization this time.
 """
 
 time_callback_gc = TimeHistory()
+model = make_model()
 model.compile(loss="binary_crossentropy", optimizer=optimizer, metrics=["accuracy"])
 
 model.summary()

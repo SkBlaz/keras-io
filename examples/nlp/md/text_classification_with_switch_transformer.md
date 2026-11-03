@@ -2,7 +2,7 @@
 
 **Author:** [Khalid Salama](https://www.linkedin.com/in/khalid-salama-24403144/)<br>
 **Date created:** 2020/05/10<br>
-**Last modified:** 2021/02/15<br>
+**Last modified:** 2026/02/25<br>
 **Description:** Implement a Switch Transformer for text classification.
 
 
@@ -34,9 +34,9 @@ model for demonstration purposes.
 
 
 ```python
-import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras import layers
+import keras
+from keras import ops
+from keras import layers
 ```
 
 ---
@@ -49,20 +49,17 @@ num_tokens_per_example = 200  # Only consider the first 200 words of each movie 
 (x_train, y_train), (x_val, y_val) = keras.datasets.imdb.load_data(num_words=vocab_size)
 print(len(x_train), "Training sequences")
 print(len(x_val), "Validation sequences")
-x_train = keras.preprocessing.sequence.pad_sequences(
-    x_train, maxlen=num_tokens_per_example
-)
-x_val = keras.preprocessing.sequence.pad_sequences(x_val, maxlen=num_tokens_per_example)
+x_train = keras.utils.pad_sequences(x_train, maxlen=num_tokens_per_example)
+x_val = keras.utils.pad_sequences(x_val, maxlen=num_tokens_per_example)
 ```
 
 <div class="k-default-codeblock">
 ```
-
 25000 Training sequences
 25000 Validation sequences
-
 ```
 </div>
+
 ---
 ## Define hyperparameters
 
@@ -85,26 +82,26 @@ print(f"Number of tokens per batch: {num_tokens_per_batch}")
 <div class="k-default-codeblock">
 ```
 Number of tokens per batch: 10000
-
 ```
 </div>
+
 ---
 ## Implement token & position embedding layer
 
-It consists of two seperate embedding layers, one for tokens, one for token index (positions).
+It consists of two separate embedding layers, one for tokens, one for token index (positions).
 
 
 ```python
 
 class TokenAndPositionEmbedding(layers.Layer):
     def __init__(self, maxlen, vocab_size, embed_dim):
-        super(TokenAndPositionEmbedding, self).__init__()
+        super().__init__()
         self.token_emb = layers.Embedding(input_dim=vocab_size, output_dim=embed_dim)
         self.pos_emb = layers.Embedding(input_dim=maxlen, output_dim=embed_dim)
 
     def call(self, x):
-        maxlen = tf.shape(x)[-1]
-        positions = tf.range(start=0, limit=maxlen, delta=1)
+        maxlen = ops.shape(x)[-1]
+        positions = ops.arange(start=0, stop=maxlen, step=1)
         positions = self.pos_emb(positions)
         x = self.token_emb(x)
         return x + positions
@@ -119,9 +116,9 @@ This is used as the Mixture of Experts in the Switch Transformer.
 
 ```python
 
-def create_feedforward_network(ff_dim, name=None):
+def create_feedforward_network(ff_dim, embed_dim, name=None):
     return keras.Sequential(
-        [layers.Dense(ff_dim, activation="relu"), layers.Dense(ff_dim)], name=name
+        [layers.Dense(ff_dim, activation="relu"), layers.Dense(embed_dim)], name=name
     )
 
 ```
@@ -139,19 +136,17 @@ def load_balanced_loss(router_probs, expert_mask):
     # each expert per token. expert_mask [tokens_per_batch, num_experts] contains
     # the expert with the highest router probability in one−hot format.
 
-    num_experts = tf.shape(expert_mask)[-1]
+    num_experts = ops.shape(expert_mask)[-1]
     # Get the fraction of tokens routed to each expert.
     # density is a vector of length num experts that sums to 1.
-    density = tf.reduce_mean(expert_mask, axis=0)
+    density = ops.mean(expert_mask, axis=0)
     # Get fraction of probability mass assigned to each expert from the router
     # across all tokens. density_proxy is a vector of length num experts that sums to 1.
-    density_proxy = tf.reduce_mean(router_probs, axis=0)
+    density_proxy = ops.mean(router_probs, axis=0)
     # Want both vectors to have uniform allocation (1/num experts) across all
     # num_expert elements. The two vectors will be pushed towards uniform allocation
     # when the dot product is minimized.
-    loss = tf.reduce_mean(density_proxy * density) * tf.cast(
-        (num_experts ** 2), tf.dtypes.float32
-    )
+    loss = ops.mean(density_proxy * density) * ops.cast((num_experts**2), "float32")
     return loss
 
 ```
@@ -166,7 +161,7 @@ class Router(layers.Layer):
         self.num_experts = num_experts
         self.route = layers.Dense(units=num_experts)
         self.expert_capacity = expert_capacity
-        super(Router, self).__init__()
+        super().__init__()
 
     def call(self, inputs, training=False):
         # inputs shape: [tokens_per_batch, embed_dim]
@@ -175,7 +170,7 @@ class Router(layers.Layer):
 
         if training:
             # Add noise for exploration across experts.
-            router_logits += tf.random.uniform(
+            router_logits += keras.random.uniform(
                 shape=router_logits.shape, minval=0.9, maxval=1.1
             )
         # Probabilities for each token of what expert it should be sent to.
@@ -183,39 +178,39 @@ class Router(layers.Layer):
         # Get the top−1 expert for each token. expert_gate is the top−1 probability
         # from the router for each token. expert_index is what expert each token
         # is going to be routed to.
-        expert_gate, expert_index = tf.math.top_k(router_probs, k=1)
+        expert_gate, expert_index = ops.top_k(router_probs, k=1)
         # expert_mask shape: [tokens_per_batch, num_experts]
-        expert_mask = tf.one_hot(expert_index, depth=self.num_experts)
+        expert_mask = ops.one_hot(expert_index, self.num_experts)
         # Compute load balancing loss.
         aux_loss = load_balanced_loss(router_probs, expert_mask)
         self.add_loss(aux_loss)
         # Experts have a fixed capacity, ensure we do not exceed it. Construct
         # the batch indices, to each expert, with position in expert make sure that
         # not more that expert capacity examples can be routed to each expert.
-        position_in_expert = tf.cast(
-            tf.math.cumsum(expert_mask, axis=0) * expert_mask, tf.dtypes.int32
+        position_in_expert = ops.cast(
+            ops.cumsum(expert_mask, axis=0) * expert_mask, "int32"
         )
         # Keep only tokens that fit within expert capacity.
-        expert_mask *= tf.cast(
-            tf.math.less(
-                tf.cast(position_in_expert, tf.dtypes.int32), self.expert_capacity
-            ),
-            tf.dtypes.float32,
+        expert_mask *= ops.cast(
+            ops.less(ops.cast(position_in_expert, "int32"), self.expert_capacity),
+            "float32",
         )
-        expert_mask_flat = tf.reduce_sum(expert_mask, axis=-1)
+        expert_mask_flat = ops.sum(expert_mask, axis=-1)
         # Mask out the experts that have overflowed the expert capacity.
         expert_gate *= expert_mask_flat
         # Combine expert outputs and scaling with router probability.
         # combine_tensor shape: [tokens_per_batch, num_experts, expert_capacity]
-        combined_tensor = tf.expand_dims(
+        combined_tensor = ops.expand_dims(
             expert_gate
             * expert_mask_flat
-            * tf.squeeze(tf.one_hot(expert_index, depth=self.num_experts), 1),
+            * ops.squeeze(ops.one_hot(expert_index, self.num_experts), 1),
             -1,
-        ) * tf.squeeze(tf.one_hot(position_in_expert, depth=self.expert_capacity), 1)
+        ) * ops.squeeze(ops.one_hot(position_in_expert, self.expert_capacity), 1)
+
         # Create binary dispatch_tensor [tokens_per_batch, num_experts, expert_capacity]
         # that is 1 if the token gets routed to the corresponding expert.
-        dispatch_tensor = tf.cast(combined_tensor, tf.dtypes.float32)
+# cast to float32 so it can be used in the einsum product in the Switch layer.
+dispatch_tensor = ops.cast(combined_tensor, dtype="float32")
 
         return dispatch_tensor, combined_tensor
 
@@ -227,45 +222,48 @@ class Router(layers.Layer):
 ```python
 
 class Switch(layers.Layer):
-    def __init__(self, num_experts, embed_dim, num_tokens_per_batch, capacity_factor=1):
+    def __init__(
+        self, num_experts, embed_dim, ff_dim, num_tokens_per_batch, capacity_factor=1
+    ):
         self.num_experts = num_experts
         self.embed_dim = embed_dim
         self.experts = [
-            create_feedforward_network(embed_dim) for _ in range(num_experts)
+            create_feedforward_network(ff_dim, embed_dim) for _ in range(num_experts)
         ]
 
         self.expert_capacity = num_tokens_per_batch // self.num_experts
         self.router = Router(self.num_experts, self.expert_capacity)
-        super(Switch, self).__init__()
+        super().__init__()
 
     def call(self, inputs):
-        batch_size = tf.shape(inputs)[0]
-        num_tokens_per_example = tf.shape(inputs)[1]
+        batch_size = ops.shape(inputs)[0]
+        num_tokens_per_example = ops.shape(inputs)[1]
 
         # inputs shape: [num_tokens_per_batch, embed_dim]
-        inputs = tf.reshape(inputs, [num_tokens_per_batch, self.embed_dim])
-        # dispatch_tensor shape: [expert_capacity, num_experts, tokens_per_batch]
-        # combine_tensor shape: [tokens_per_batch, num_experts, expert_capacity]
-        dispatch_tensor, combine_tensor = self.router(inputs)
-        # expert_inputs shape: [num_experts, expert_capacity, embed_dim]
-        expert_inputs = tf.einsum("ab,acd->cdb", inputs, dispatch_tensor)
-        expert_inputs = tf.reshape(
+        inputs = ops.reshape(inputs, [num_tokens_per_batch, self.embed_dim])
+# dispatch_tensor shape: [tokens_per_batch, num_experts, expert_capacity]
+# combine_tensor shape: [tokens_per_batch, num_experts, expert_capacity]
+dispatch_tensor, combine_tensor = self.router(inputs)
+# expert_inputs shape: [num_experts, expert_capacity, embed_dim]
+# "ab" = [tokens, dim], "acd" = [tokens, experts, capacity] -> "cdb" = [experts, capacity, dim]
+        expert_inputs = ops.einsum("ab,acd->cdb", inputs, dispatch_tensor)
+        expert_inputs = ops.reshape(
             expert_inputs, [self.num_experts, self.expert_capacity, self.embed_dim]
         )
         # Dispatch to experts
-        expert_input_list = tf.unstack(expert_inputs, axis=0)
+        expert_input_list = ops.unstack(expert_inputs, axis=0)
         expert_output_list = [
             self.experts[idx](expert_input)
             for idx, expert_input in enumerate(expert_input_list)
         ]
         # expert_outputs shape: [expert_capacity, num_experts, embed_dim]
-        expert_outputs = tf.stack(expert_output_list, axis=1)
+        expert_outputs = ops.stack(expert_output_list, axis=1)
         # expert_outputs_combined shape: [tokens_per_batch, embed_dim]
-        expert_outputs_combined = tf.einsum(
+        expert_outputs_combined = ops.einsum(
             "abc,xba->xc", expert_outputs, combine_tensor
         )
         # output shape: [batch_size, num_tokens_per_example, embed_dim]
-        outputs = tf.reshape(
+        outputs = ops.reshape(
             expert_outputs_combined,
             [batch_size, num_tokens_per_example, self.embed_dim],
         )
@@ -281,7 +279,7 @@ class Switch(layers.Layer):
 
 class TransformerBlock(layers.Layer):
     def __init__(self, embed_dim, num_heads, ffn, dropout_rate=0.1):
-        super(TransformerBlock, self).__init__()
+        super().__init__()
         self.att = layers.MultiHeadAttention(num_heads=num_heads, key_dim=embed_dim)
         # The ffn can be either a standard feedforward network or a switch
         # layer with a Mixture of Experts.
@@ -291,7 +289,7 @@ class TransformerBlock(layers.Layer):
         self.dropout1 = layers.Dropout(dropout_rate)
         self.dropout2 = layers.Dropout(dropout_rate)
 
-    def call(self, inputs, training):
+    def call(self, inputs, training=False):
         attn_output = self.att(inputs, inputs)
         attn_output = self.dropout1(attn_output, training=training)
         out1 = self.layernorm1(inputs + attn_output)
@@ -312,8 +310,8 @@ of it to classify text.
 ```python
 
 def create_classifier():
-    switch = Switch(num_experts, embed_dim, num_tokens_per_batch)
-    transformer_block = TransformerBlock(ff_dim, num_heads, switch)
+    switch = Switch(num_experts, embed_dim, ff_dim, num_tokens_per_batch)
+    transformer_block = TransformerBlock(embed_dim // num_heads, num_heads, switch)
 
     inputs = layers.Input(shape=(num_tokens_per_example,))
     embedding_layer = TokenAndPositionEmbedding(
@@ -362,19 +360,29 @@ run_experiment(classifier)
 <div class="k-default-codeblock">
 ```
 Epoch 1/3
-500/500 [==============================] - 575s 1s/step - loss: 1.5311 - accuracy: 0.7151 - val_loss: 1.2915 - val_accuracy: 0.8772
+
+500/500 ━━━━━━━━━━━━━━━━━━━━ 237s 470ms/step - accuracy: 0.7964 - loss: 1.4334 - val_accuracy: 0.8550 - val_loss: 1.3459
+
 Epoch 2/3
-500/500 [==============================] - 575s 1s/step - loss: 1.1971 - accuracy: 0.9262 - val_loss: 1.3073 - val_accuracy: 0.8708
+
+500/500 ━━━━━━━━━━━━━━━━━━━━ 266s 532ms/step - accuracy: 0.9182 - loss: 1.2174 - val_accuracy: 0.8750 - val_loss: 1.3057
+
 Epoch 3/3
-500/500 [==============================] - 624s 1s/step - loss: 1.1284 - accuracy: 0.9563 - val_loss: 1.3547 - val_accuracy: 0.8637
 
-<tensorflow.python.keras.callbacks.History at 0x1495461d0>
+500/500 ━━━━━━━━━━━━━━━━━━━━ 272s 545ms/step - accuracy: 0.9519 - loss: 1.1388 - val_accuracy: 0.8637 - val_loss: 1.3765
 
+<keras.src.callbacks.history.History at 0x176081090>
 ```
 </div>
+
 ---
 ## Conclusion
 
 Compared to the standard Transformer architecture, the Switch Transformer can have a much
 larger number of parameters, leading to increased model
 capacity, while maintaining a reasonable computational cost.
+
+---
+## Relevant Chapters from Deep Learning with Python
+- [Chapter 14: Text classification](https://deeplearningwithpython.io/chapters/chapter14_text-classification)
+- [Chapter 15: Language models and the Transformer](https://deeplearningwithpython.io/chapters/chapter15_language-models-and-the-transformer)

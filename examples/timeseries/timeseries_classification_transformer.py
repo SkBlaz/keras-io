@@ -4,8 +4,8 @@ Author: [Theodoros Ntakouris](https://github.com/ntakouris)
 Date created: 2021/06/25
 Last modified: 2021/08/05
 Description: This notebook demonstrates how to do timeseries classification using a Transformer model.
+Accelerator: GPU
 """
-
 
 """
 ## Introduction
@@ -24,6 +24,8 @@ example.
 """
 
 import numpy as np
+import keras
+from keras import layers
 
 
 def readucr(filename):
@@ -59,17 +61,16 @@ timeseries.
 
 You can replace your classification RNN layers with this one: the
 inputs are fully compatible!
-"""
 
-from tensorflow import keras
-from tensorflow.keras import layers
-
-"""
 We include residual connections, layer normalization, and dropout.
 The resulting layer can be stacked multiple times.
 
 The projection layers are implemented through `keras.layers.Conv1D`.
 """
+
+# This implementation applies Layer Normalization before the residual connection
+# to improve training stability by producing better-behaved gradients and often
+# eliminating the need for learning rate warm-up.
 
 
 def transformer_encoder(inputs, head_size, num_heads, ff_dim, dropout=0):
@@ -115,7 +116,7 @@ def build_model(
     for _ in range(num_transformer_blocks):
         x = transformer_encoder(x, head_size, num_heads, ff_dim, dropout)
 
-    x = layers.GlobalAveragePooling1D(data_format="channels_first")(x)
+    x = layers.GlobalAveragePooling1D(data_format="channels_last")(x)
     for dim in mlp_units:
         x = layers.Dense(dim, activation="relu")(x)
         x = layers.Dropout(mlp_dropout)(x)
@@ -153,7 +154,7 @@ model.fit(
     x_train,
     y_train,
     validation_split=0.2,
-    epochs=200,
+    epochs=150,
     batch_size=64,
     callbacks=callbacks,
 )
@@ -169,4 +170,5 @@ accuracy of ~85, without hyperparameter tuning. And that is for a model
 with less than 100k parameters. Of course, parameter count and accuracy could be
 improved by a hyperparameter search and a more sophisticated learning rate
 schedule, or a different optimizer.
+
 """

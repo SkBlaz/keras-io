@@ -4,7 +4,9 @@ Author: [lukewood](https://lukewood.xyz)
 Date created: 11/03/2021
 Last modified: 11/03/2021
 Description: This example shows how to implement custom convolution layers using the `Conv.convolution_op()` API.
+Accelerator: GPU
 """
+
 """
 ## Introduction
 
@@ -16,9 +18,7 @@ most of the base convolution layer and just customize the convolution op itself 
 This method was introduced in Keras 2.7. So before using the
 `convolution_op()` API, ensure that you are running Keras version 2.7.0 or greater.
 """
-import tensorflow.keras as keras
 
-print(keras.__version__)
 """
 ## A Simple `StandardizedConv2D` implementation
 
@@ -27,9 +27,13 @@ is to override the `convolution_op()` method on a convolution layer subclass.
 Using this approach, we can quickly implement a
 [StandardizedConv2D](https://arxiv.org/abs/1903.10520) as shown below.
 """
+import os
+
+os.environ["KERAS_BACKEND"] = "tensorflow"
+
 import tensorflow as tf
-import tensorflow.keras as keras
-import keras.layers as layers
+import keras
+from keras import layers
 import numpy as np
 
 
@@ -93,7 +97,7 @@ y_test = keras.utils.to_categorical(y_test, num_classes)
 
 model = keras.Sequential(
     [
-        keras.layers.InputLayer(input_shape=input_shape),
+        keras.layers.Input(shape=input_shape),
         StandardizedConv2DWithCall(32, kernel_size=(3, 3), activation="relu"),
         layers.MaxPooling2D(pool_size=(2, 2)),
         StandardizedConv2DWithOverride(64, kernel_size=(3, 3), activation="relu"),
@@ -121,4 +125,10 @@ model.fit(x_train, y_train, batch_size=batch_size, epochs=5, validation_split=0.
 The `Conv.convolution_op()` API provides an easy and readable way to implement custom
 convolution layers. A `StandardizedConvolution` implementation using the API is quite
 terse, consisting of only four lines of code.
+"""
+
+"""
+## Relevant Chapters from Deep Learning with Python
+- [Chapter 7: A deep dive on Keras](https://deeplearningwithpython.io/chapters/chapter07_deep-dive-keras)
+- [Chapter 8: Image classification](https://deeplearningwithpython.io/chapters/chapter08_image-classification)
 """

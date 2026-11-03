@@ -4,7 +4,9 @@ Author: [Mohamad Jaber](https://www.linkedin.com/in/mohamadjaber1/)
 Date created: 2021/08/16
 Last modified: 2021/11/25
 Description: MIL approach to classify bags of instances and get their individual instance score.
+Accelerator: GPU
 """
+
 """
 ## Introduction
 
@@ -53,9 +55,9 @@ by TensorFlow.
 """
 
 import numpy as np
-import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras import layers
+import keras
+from keras import layers
+from keras import ops
 from tqdm import tqdm
 from matplotlib import pyplot as plt
 
@@ -96,7 +98,6 @@ positive class label is randomly placed among the instances in the positive bag.
 
 
 def create_bags(input_data, input_labels, positive_class, bag_count, instance_count):
-
     # Set up bags.
     bags = []
     bag_labels = []
@@ -108,7 +109,6 @@ def create_bags(input_data, input_labels, positive_class, bag_count, instance_co
     count = 0
 
     for _ in range(bag_count):
-
         # Pick a fixed size random subset of samples.
         index = np.random.choice(input_data.shape[0], instance_count, replace=False)
         instances_data = input_data[index]
@@ -119,7 +119,6 @@ def create_bags(input_data, input_labels, positive_class, bag_count, instance_co
 
         # Check if there is at least a positive class in the bag.
         if positive_class in instances_labels:
-
             # Positive bag will be labeled as 1.
             bag_label = 1
             count += 1
@@ -191,7 +190,6 @@ class MILAttentionLayer(layers.Layer):
         use_gated=False,
         **kwargs,
     ):
-
         super().__init__(**kwargs)
 
         self.weight_params_dim = weight_params_dim
@@ -209,7 +207,6 @@ class MILAttentionLayer(layers.Layer):
         self.u_regularizer = self.kernel_regularizer
 
     def build(self, input_shape):
-
         # Input shape.
         # List of 2D tensors with shape: (batch_size, input_dim).
         input_dim = input_shape[0][1]
@@ -244,32 +241,33 @@ class MILAttentionLayer(layers.Layer):
         self.input_built = True
 
     def call(self, inputs):
-
         # Assigning variables from the number of inputs.
         instances = [self.compute_attention_scores(instance) for instance in inputs]
 
-        # Apply softmax over instances such that the output summation is equal to 1.
-        alpha = tf.math.softmax(instances, axis=0)
+        # Stack instances into a single tensor.
+        instances = ops.stack(instances)
 
+        # Apply softmax over instances such that the output summation is equal to 1.
+        alpha = ops.softmax(instances, axis=0)
+
+        # Split to recreate the same array of tensors we had as inputs.
         return [alpha[i] for i in range(alpha.shape[0])]
 
     def compute_attention_scores(self, instance):
-
         # Reserve in-case "gated mechanism" used.
         original_instance = instance
 
         # tanh(v*h_k^T)
-        instance = tf.math.tanh(tf.tensordot(instance, self.v_weight_params, axes=1))
+        instance = ops.tanh(ops.tensordot(instance, self.v_weight_params, axes=1))
 
         # for learning non-linear relations efficiently.
         if self.use_gated:
-
-            instance = instance * tf.math.sigmoid(
-                tf.tensordot(original_instance, self.u_weight_params, axes=1)
+            instance = instance * ops.sigmoid(
+                ops.tensordot(original_instance, self.u_weight_params, axes=1)
             )
 
         # w^T*(tanh(v*h_k^T)) / w^T*(tanh(v*h_k^T)*sigmoid(u*h_k^T))
-        return tf.tensordot(instance, self.w_weight_params, axes=1)
+        return ops.tensordot(instance, self.w_weight_params, axes=1)
 
 
 """
@@ -283,8 +281,7 @@ for each bag (after the model has been trained) can be seen.
 
 
 def plot(data, labels, bag_class, predictions=None, attention_weights=None):
-
-    """"Utility for plotting bags and attention weights.
+    """ "Utility for plotting bags and attention weights.
 
     Args:
       data: Input data that contains the bags of instances.
@@ -296,7 +293,7 @@ def plot(data, labels, bag_class, predictions=None, attention_weights=None):
       attention_weights: Attention weights for each instance within the input data.
       If you don't specify anything, the values won't be displayed.
     """
-
+    return  ## TODO
     labels = np.array(labels).reshape(-1)
 
     if bag_class == "positive":
@@ -347,7 +344,6 @@ use the softmax function to output the class probabilities.
 
 
 def create_model(instance_shape):
-
     # Extract features from inputs.
     inputs, embeddings = [], []
     shared_dense_layer_1 = layers.Dense(128, activation="relu")
@@ -363,7 +359,7 @@ def create_model(instance_shape):
     # Invoke the attention layer.
     alpha = MILAttentionLayer(
         weight_params_dim=256,
-        kernel_regularizer=keras.regularizers.l2(0.01),
+        kernel_regularizer=keras.regularizers.L2(0.01),
         use_gated=True,
         name="alpha",
     )(embeddings)
@@ -397,8 +393,7 @@ Using class weights, the model will tend to give a higher weight to the rare cla
 
 
 def compute_class_weights(labels):
-
-    # Count number of postive and negative bags.
+    # Count number of positive and negative bags.
     negative_count = len(np.where(labels == 0)[0])
     positive_count = len(np.where(labels == 1)[0])
     total_count = negative_count + positive_count
@@ -418,13 +413,12 @@ The model is built and trained in this section.
 
 
 def train(train_data, train_labels, val_data, val_labels, model):
-
     # Train model.
     # Prepare callbacks.
     # Path where to save best weights.
 
     # Take the file name from the wrapper.
-    file_path = "/tmp/best_model_weights.h5"
+    file_path = "/tmp/best_model.weights.h5"
 
     # Initialize model checkpoint callback.
     model_checkpoint = keras.callbacks.ModelCheckpoint(
@@ -445,7 +439,9 @@ def train(train_data, train_labels, val_data, val_labels, model):
 
     # Compile model.
     model.compile(
-        optimizer="adam", loss="sparse_categorical_crossentropy", metrics=["accuracy"],
+        optimizer="adam",
+        loss="sparse_categorical_crossentropy",
+        metrics=["accuracy"],
     )
 
     # Fit model.
@@ -492,7 +488,6 @@ average them together for our final prediction.
 
 
 def predict(data, labels, trained_models):
-
     # Collect info per model.
     models_predictions = []
     models_attention_weights = []
@@ -500,7 +495,6 @@ def predict(data, labels, trained_models):
     models_accuracies = []
 
     for model in trained_models:
-
         # Predict output classes on data.
         predictions = model.predict(data)
         models_predictions.append(predictions)
@@ -568,4 +562,9 @@ the regularization techniques are necessary.
 bag sizes are fixed here.
 - In order not to rely on the random initial weights of a single model, averaging ensemble
 methods should be considered.
+"""
+
+"""
+## Relevant Chapters from Deep Learning with Python
+- [Chapter 8: Image classification](https://deeplearningwithpython.io/chapters/chapter08_image-classification)
 """

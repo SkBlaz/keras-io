@@ -4,6 +4,7 @@ Author: [Darshan Deshpande](https://twitter.com/getdarshan)
 Date created: 02/09/2021
 Last modified: 15/09/2021
 Description: Inversion of audio from mel-spectrograms using the MelGAN architecture and feature matching.
+Accelerator: GPU
 """
 
 """
@@ -11,7 +12,7 @@ Description: Inversion of audio from mel-spectrograms using the MelGAN architect
 
 Autoregressive vocoders have been ubiquitous for a majority of the history of speech processing,
 but for most of their existence they have lacked parallelism.
-[MelGAN](https://arxiv.org/pdf/1910.06711v3.pdf) is a
+[MelGAN](https://arxiv.org/abs/1910.06711) is a
 non-autoregressive, fully convolutional vocoder architecture used for purposes ranging
 from spectral inversion and speech enhancement to present-day state-of-the-art
 speech synthesis when used as a decoder
@@ -71,13 +72,14 @@ tar -xf /content/LJSpeech-1.1.tar.bz2
 """
 We create a `tf.data.Dataset` to load and process the audio files on the fly.
 The `preprocess()` function takes the file path as input and returns two instances of the
-wave, one for input and one as the ground truth for comparsion. The input wave will be
+wave, one for input and one as the ground truth for comparison. The input wave will be
 mapped to a spectrogram using the custom `MelSpec` layer as shown later in this example.
 """
 
 # Splitting the dataset into training and testing splits
 wavs = tf.io.gfile.glob("LJSpeech-1.1/wavs/*.wav")
 print(f"Number of audio files: {len(wavs)}")
+
 
 # Mapper function for loading the audio. This function returns two instances of the wave
 def preprocess(filename):
@@ -165,7 +167,7 @@ class MelSpec(layers.Layer):
             return audio
 
     def get_config(self):
-        config = super(MelSpec, self).get_config()
+        config = super().get_config()
         config.update(
             {
                 "frame_length": self.frame_length,
@@ -196,7 +198,7 @@ def residual_stack(input, filters):
     """Convolutional residual stack with weight normalization.
 
     Args:
-        filter: int, determines filter size for the residual stack.
+        filters: int, determines filter size for the residual stack.
 
     Returns:
         Residual stack output.
@@ -497,8 +499,8 @@ class MelGAN(keras.Model):
             gen_audio_wave = generator(x_batch_train, training=True)
 
             # Generating the features using the discriminator
-            fake_pred = discriminator(y_batch_train)
-            real_pred = discriminator(gen_audio_wave)
+            real_pred = discriminator(y_batch_train)
+            fake_pred = discriminator(gen_audio_wave)
 
             # Calculating the generator losses
             gen_loss = generator_loss(real_pred, fake_pred)
@@ -597,9 +599,9 @@ mel-spectrograms
 
 Further reading
 
-1. [MelGAN paper](https://arxiv.org/pdf/1910.06711v3.pdf) (Kundan Kumar et al.) to
+1. [MelGAN paper](https://arxiv.org/abs/1910.06711) (Kundan Kumar et al.) to
 understand the reasoning behind the architecture and training process
 2. For in-depth understanding of the feature matching loss, you can refer to [Improved
-Techniques for Training GANs](https://arxiv.org/pdf/1606.03498v1.pdf) (Tim Salimans et
+Techniques for Training GANs](https://arxiv.org/abs/1606.03498) (Tim Salimans et
 al.).
 """

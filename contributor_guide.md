@@ -30,8 +30,8 @@ you should import the following:
 
 ```python
 import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras import layers
+import keras
+from keras import layers
 ```
 
 Then access objects from these modules:
@@ -46,7 +46,7 @@ layers.Layer(...)
 layers.Conv2D(...)
 ```
 
-Note: do **not** use `import keras`. Use `from tensorflow import keras` instead.
+Note: As of `2.13` prefer `import keras` over `from tensorflow import keras`.
 
 
 ### Extra dependencies
@@ -58,6 +58,20 @@ Instead, mention the dependencies in the text, alongside an example of the pip c
 ```md
 This example requires XYZ. You can install it via the following command: `pip install XYZ`
 ```
+
+## GitHub Actions Security Validation
+
+Pull requests modifying GitHub Actions workflows are automatically validated using Zizmor.
+Before requesting review:
+
+- **Pin Actions to True Commits:** Never use floating or annotated tags. Always pin third-party GitHub Actions to their true, underlying commit SHAs.
+- Resolve all Zizmor findings whenever possible.
+- Run Zizmor locally when modifying workflow files (e.g., using `uvx zizmor .github/` or `pipx run zizmor .github/`).
+- Use `# zizmor: ignore[rule-name]` only for verified false positives.
+  - Examples: `# zizmor: ignore[cache-poisoning]`, `# zizmor: ignore[insecure-pull-request-target]`.
+  - For a full list of rules, see the [Zizmor Rules Documentation](https://docs.zizmor.sh/audits/).
+- Every suppression must include a clear justification explaining why the finding is safe.
+- Pull requests containing undocumented suppressions may be rejected during review.
 
 ---
 
@@ -173,7 +187,7 @@ There should be a conclusion section that recapitulates key takeaways from the e
 
 All code keywords should be formatted with backticks, e.g. `like_this` (standard Markdown code formatting).
 
-When refering to a function or method name, it should be followed with parens, like this: `my_function()` or `my_method()`.
+When referring to a function or method name, it should be followed with parens, like this: `my_function()` or `my_method()`.
 
 ### Mathematical notation
 

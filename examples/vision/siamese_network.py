@@ -4,6 +4,7 @@ Authors: [Hazem Essam](https://twitter.com/hazemessamm) and [Santiago L. Valdarr
 Date created: 2021/03/25
 Last modified: 2021/03/25
 Description: Training a Siamese Network to compare the similarity of images using a triplet loss function.
+Accelerator: GPU
 """
 
 """
@@ -19,13 +20,13 @@ two of them will be similar (_anchor_ and _positive_ samples), and the third wil
 Our goal is for the model to learn to estimate the similarity between images.
 
 For the network to learn, we use a triplet loss function. You can find an introduction to triplet loss in the
-[FaceNet paper](https://arxiv.org/pdf/1503.03832.pdf) by Schroff et al,. 2015. In this example, we define the triplet
+[FaceNet paper](https://arxiv.org/abs/1503.03832) by Schroff et al,. 2015. In this example, we define the triplet
 loss function as follows:
 
 `L(A, P, N) = max(‖f(A) - f(P)‖² - ‖f(A) - f(N)‖² + margin, 0)`
 
 This example uses the [Totally Looks Like dataset](https://sites.google.com/view/totally-looks-like-dataset)
-by [Rosenfeld et al., 2018](https://arxiv.org/pdf/1803.01485v3.pdf).
+by [Rosenfeld et al., 2018](https://arxiv.org/abs/1803.01485v3).
 """
 
 """
@@ -38,14 +39,14 @@ import os
 import random
 import tensorflow as tf
 from pathlib import Path
-from tensorflow.keras import applications
-from tensorflow.keras import layers
-from tensorflow.keras import losses
-from tensorflow.keras import optimizers
-from tensorflow.keras import metrics
-from tensorflow.keras import Model
-from tensorflow.keras.applications import resnet
-
+from keras import applications
+from keras import layers
+from keras import losses
+from keras import ops
+from keras import optimizers
+from keras import metrics
+from keras import Model
+from keras.applications import resnet
 
 target_shape = (200, 200)
 
@@ -240,8 +241,8 @@ class DistanceLayer(layers.Layer):
         super().__init__(**kwargs)
 
     def call(self, anchor, positive, negative):
-        ap_distance = tf.reduce_sum(tf.square(anchor - positive), -1)
-        an_distance = tf.reduce_sum(tf.square(anchor - negative), -1)
+        ap_distance = ops.sum(tf.square(anchor - positive), -1)
+        an_distance = ops.sum(tf.square(anchor - negative), -1)
         return (ap_distance, an_distance)
 
 
@@ -280,7 +281,7 @@ class SiameseModel(Model):
     """
 
     def __init__(self, siamese_network, margin=0.5):
-        super(SiameseModel, self).__init__()
+        super().__init__()
         self.siamese_network = siamese_network
         self.margin = margin
         self.loss_tracker = metrics.Mean(name="loss")

@@ -2,9 +2,12 @@
 Title: Review Classification using Active Learning
 Author: [Darshan Deshpande](https://twitter.com/getdarshan)
 Date created: 2021/10/29
-Last modified: 2021/10/29
+Last modified: 2024/05/08
 Description: Demonstrating the advantages of active learning through review classification.
+Accelerator: GPU
+Converted to Keras 3 by: [Sachin Prasad](https://github.com/sachinprasadhs)
 """
+
 """
 ## Introduction
 
@@ -30,8 +33,8 @@ acceptable score is reached or some other business metric is met.
 This tutorial provides a basic demonstration of how Active Learning works by
 demonstrating a ratio-based (least confidence) sampling strategy that results in lower
 overall false positive and negative rates when compared to a model trained on the entire
-dataset. This sampling falls under the domain of *uncertanity sampling*, in which new
-datasets are sampled based on the uncertanity that the model outputs for the
+dataset. This sampling falls under the domain of *uncertainty sampling*, in which new
+datasets are sampled based on the uncertainty that the model outputs for the
 corresponding label. In our example, we compare our model's false positive and false
 negative rates and annotate the new data based on their ratio.
 
@@ -49,10 +52,14 @@ Selects data points closest to the decision boundary
 ## Importing required libraries
 """
 
+import os
+
+os.environ["KERAS_BACKEND"] = "tensorflow"  # @param ["tensorflow", "jax", "torch"]
+import keras
+from keras import ops
+from keras import layers
 import tensorflow_datasets as tfds
 import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras import layers
 import matplotlib.pyplot as plt
 import re
 import string
@@ -167,16 +174,8 @@ faster, we use the `map()` function with its parallelization functionality.
 """
 
 
-def custom_standardization(input_data):
-    lowercase = tf.strings.lower(input_data)
-    stripped_html = tf.strings.regex_replace(lowercase, "<br />", " ")
-    return tf.strings.regex_replace(
-        stripped_html, f"[{re.escape(string.punctuation)}]", ""
-    )
-
-
 vectorizer = layers.TextVectorization(
-    3000, standardize=custom_standardization, output_sequence_length=150
+    3000, standardize="lower_and_strip_punctuation", output_sequence_length=150
 )
 # Adapting the dataset
 vectorizer.adapt(
@@ -205,6 +204,7 @@ test_dataset = test_dataset.batch(256).map(
 """
 ## Creating Helper Functions
 """
+
 
 # Helper function for merging new history objects with older ones
 def append_history(losses, val_losses, accuracy, val_accuracy, history):
@@ -286,7 +286,7 @@ def train_full_model(full_train_dataset, val_dataset, test_dataset):
         callbacks=[
             keras.callbacks.EarlyStopping(patience=4, verbose=1),
             keras.callbacks.ModelCheckpoint(
-                "FullModelCheckpoint.h5", verbose=1, save_best_only=True
+                "FullModelCheckpoint.keras", verbose=1, save_best_only=True
             ),
         ],
     )
@@ -300,7 +300,7 @@ def train_full_model(full_train_dataset, val_dataset, test_dataset):
     )
 
     # Loading the best checkpoint
-    model = keras.models.load_model("FullModelCheckpoint.h5")
+    model = keras.models.load_model("FullModelCheckpoint.keras")
 
     print("-" * 100)
     print(
@@ -387,7 +387,7 @@ def train_active_learning_models(
     # Defining checkpoints.
     # The checkpoint callback is reused throughout the training since it only saves the best overall model.
     checkpoint = keras.callbacks.ModelCheckpoint(
-        "AL_Model.h5", save_best_only=True, verbose=1
+        "AL_Model.keras", save_best_only=True, verbose=1
     )
     # Here, patience is set to 4. This can be set higher if desired.
     early_stopping = keras.callbacks.EarlyStopping(patience=4, verbose=1)
@@ -411,7 +411,7 @@ def train_active_learning_models(
         predictions = model.predict(test_dataset)
 
         # Generating labels from the output probabilities
-        rounded = tf.where(tf.greater(predictions, 0.5), 1, 0)
+        rounded = ops.where(ops.greater(predictions, 0.5), 1, 0)
 
         # Evaluating the number of zeros and ones incorrrectly classified
         _, _, false_negatives, false_positives = model.evaluate(test_dataset, verbose=0)
@@ -480,7 +480,7 @@ def train_active_learning_models(
         )
 
         # Loading the best model from this training loop
-        model = keras.models.load_model("AL_Model.h5")
+        model = keras.models.load_model("AL_Model.keras")
 
     # Plotting the overall history and evaluating the final model
     plot_history(losses, val_losses, accuracies, val_accuracies)
@@ -508,7 +508,7 @@ data, saving resources.
 The following are some noteworthy observations from this example:
 
 1. We only require 30,000 samples to reach the same (if not better) scores as the model
-trained on the full datatset. This means that in a real life setting, we save the effort
+trained on the full dataset. This means that in a real life setting, we save the effort
 required for annotating 10,000 images!
 2. The number of false negatives and false positives are well balanced at the end of the
 training as compared to the skewed ratio obtained from the full training. This makes the
@@ -521,4 +521,9 @@ open source libraries/implementations, you can refer to the resources below:
 1. [Active Learning Literature Survey](http://burrsettles.com/pub/settles.activelearning.pdf) (Burr Settles, 2010).
 2. [modAL](https://github.com/modAL-python/modAL): A Modular Active Learning framework.
 3. Google's unofficial [Active Learning playground](https://github.com/google/active-learning).
+"""
+
+"""
+## Relevant Chapters from Deep Learning with Python
+- [Chapter 14: Text classification](https://deeplearningwithpython.io/chapters/chapter14_text-classification)
 """

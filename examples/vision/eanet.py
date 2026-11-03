@@ -2,8 +2,10 @@
 Title: Image classification with EANet (External Attention Transformer)
 Author: [ZhiYong Chang](https://github.com/czy00000)
 Date created: 2021/10/19
-Last modified: 2021/10/19
+Last modified: 2023/07/18
 Description: Image classification with a Transformer that leverages external attention.
+Accelerator: GPU
+Converted to Keras 3: [Muhammad Anas Raza](https://anasrz.com)
 """
 
 """
@@ -17,27 +19,17 @@ shared memories, which can be implemented easily by simply using two cascaded
 linear layers and two normalization layers. It conveniently replaces self-attention
 as used in existing architectures. External attention has linear complexity, as it only
 implicitly considers the correlations between all samples.
-
-This example requires TensorFlow 2.5 or higher, as well as
-[TensorFlow Addons](https://www.tensorflow.org/addons/overview) package,
-which can be installed using the following command:
-
-```python
-pip install -U tensorflow-addons
-```
 """
 
 """
 ## Setup
 """
 
-import numpy as np
-import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras import layers
-import tensorflow_addons as tfa
-import matplotlib.pyplot as plt
+import keras
+from keras import layers
+from keras import ops
 
+import matplotlib.pyplot as plt
 
 """
 ## Prepare the data
@@ -100,32 +92,25 @@ data_augmentation.layers[0].adapt(x_train)
 
 class PatchExtract(layers.Layer):
     def __init__(self, patch_size, **kwargs):
-        super(PatchExtract, self).__init__(**kwargs)
+        super().__init__(**kwargs)
         self.patch_size = patch_size
 
-    def call(self, images):
-        batch_size = tf.shape(images)[0]
-        patches = tf.image.extract_patches(
-            images=images,
-            sizes=(1, self.patch_size, self.patch_size, 1),
-            strides=(1, self.patch_size, self.patch_size, 1),
-            rates=(1, 1, 1, 1),
-            padding="VALID",
-        )
-        patch_dim = patches.shape[-1]
-        patch_num = patches.shape[1]
-        return tf.reshape(patches, (batch_size, patch_num * patch_num, patch_dim))
+    def call(self, x):
+        B, C = ops.shape(x)[0], ops.shape(x)[-1]
+        x = ops.image.extract_patches(x, self.patch_size)
+        x = ops.reshape(x, (B, -1, self.patch_size * self.patch_size * C))
+        return x
 
 
 class PatchEmbedding(layers.Layer):
     def __init__(self, num_patch, embed_dim, **kwargs):
-        super(PatchEmbedding, self).__init__(**kwargs)
+        super().__init__(**kwargs)
         self.num_patch = num_patch
         self.proj = layers.Dense(embed_dim)
         self.pos_embed = layers.Embedding(input_dim=num_patch, output_dim=embed_dim)
 
     def call(self, patch):
-        pos = tf.range(start=0, limit=self.num_patch, delta=1)
+        pos = ops.arange(start=0, stop=self.num_patch, step=1)
         return self.proj(patch) + self.pos_embed(pos)
 
 
@@ -135,7 +120,12 @@ class PatchEmbedding(layers.Layer):
 
 
 def external_attention(
-    x, dim, num_heads, dim_coefficient=4, attention_dropout=0, projection_dropout=0
+    x,
+    dim,
+    num_heads,
+    dim_coefficient=4,
+    attention_dropout=0,
+    projection_dropout=0,
 ):
     _, num_patch, channel = x.shape
     assert dim % num_heads == 0
@@ -143,21 +133,24 @@ def external_attention(
 
     x = layers.Dense(dim * dim_coefficient)(x)
     # create tensor [batch_size, num_patches, num_heads, dim*dim_coefficient//num_heads]
-    x = tf.reshape(
-        x, shape=(-1, num_patch, num_heads, dim * dim_coefficient // num_heads)
-    )
-    x = tf.transpose(x, perm=[0, 2, 1, 3])
+    x = ops.reshape(x, (-1, num_patch, num_heads, dim * dim_coefficient // num_heads))
+    x = ops.transpose(x, axes=[0, 2, 1, 3])
     # a linear layer M_k
     attn = layers.Dense(dim // dim_coefficient)(x)
     # normalize attention map
     attn = layers.Softmax(axis=2)(attn)
     # dobule-normalization
-    attn = attn / (1e-9 + tf.reduce_sum(attn, axis=-1, keepdims=True))
+    attn = layers.Lambda(
+        lambda attn: ops.divide(
+            attn,
+            ops.convert_to_tensor(1e-9) + ops.sum(attn, axis=-1, keepdims=True),
+        )
+    )(attn)
     attn = layers.Dropout(attention_dropout)(attn)
     # a linear layer M_v
     x = layers.Dense(dim * dim_coefficient // num_heads)(attn)
-    x = tf.transpose(x, perm=[0, 2, 1, 3])
-    x = tf.reshape(x, [-1, num_patch, dim * dim_coefficient])
+    x = ops.transpose(x, axes=[0, 2, 1, 3])
+    x = ops.reshape(x, [-1, num_patch, dim * dim_coefficient])
     # a linear layer to project original dim
     x = layers.Dense(dim)(x)
     x = layers.Dropout(projection_dropout)(x)
@@ -170,7 +163,7 @@ def external_attention(
 
 
 def mlp(x, embedding_dim, mlp_dim, drop_rate=0.2):
-    x = layers.Dense(mlp_dim, activation=tf.nn.gelu)(x)
+    x = layers.Dense(mlp_dim, activation=ops.gelu)(x)
     x = layers.Dropout(drop_rate)(x)
     x = layers.Dense(embedding_dim)(x)
     x = layers.Dropout(drop_rate)(x)
@@ -205,7 +198,9 @@ def transformer_encoder(
         )
     elif attention_type == "self_attention":
         x = layers.MultiHeadAttention(
-            num_heads=num_heads, key_dim=embedding_dim, dropout=attention_dropout
+            num_heads=num_heads,
+            key_dim=embedding_dim,
+            dropout=attention_dropout,
         )(x, x)
     x = layers.add([x, residual_1])
     residual_2 = x
@@ -255,7 +250,7 @@ def get_model(attention_type="external_attention"):
             attention_type,
         )
 
-    x = layers.GlobalAvgPool1D()(x)
+    x = layers.GlobalAveragePooling1D()(x)
     outputs = layers.Dense(num_classes, activation="softmax")(x)
     model = keras.Model(inputs=inputs, outputs=outputs)
     return model
@@ -271,7 +266,7 @@ model = get_model(attention_type="external_attention")
 
 model.compile(
     loss=keras.losses.CategoricalCrossentropy(label_smoothing=label_smoothing),
-    optimizer=tfa.optimizers.AdamW(
+    optimizer=keras.optimizers.AdamW(
         learning_rate=learning_rate, weight_decay=weight_decay
     ),
     metrics=[

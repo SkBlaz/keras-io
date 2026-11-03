@@ -2,8 +2,9 @@
 Title: Memory-efficient embeddings for recommendation systems
 Author: [Khalid Salama](https://www.linkedin.com/in/khalid-salama-24403144/)
 Date created: 2021/02/15
-Last modified: 2021/02/15
+Last modified: 2023/11/15
 Description: Using compositional & mixed-dimension embeddings for memory-efficient recommendation models.
+Accelerator: GPU
 """
 
 """
@@ -28,15 +29,17 @@ The dataset includes around 1 million ratings from 6,000 users on 4,000 movies.
 """
 
 import os
-import math
+
+os.environ["KERAS_BACKEND"] = "tensorflow"
+
 from zipfile import ZipFile
 from urllib.request import urlretrieve
 import numpy as np
 import pandas as pd
 import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras import layers
-from tensorflow.keras.layers import StringLookup
+import keras
+from keras import layers
+from keras.layers import StringLookup
 import matplotlib.pyplot as plt
 
 """
@@ -112,7 +115,7 @@ def run_experiment(model):
     # Compile the model.
     model.compile(
         optimizer=keras.optimizers.Adam(learning_rate),
-        loss=tf.keras.losses.MeanSquaredError(),
+        loss=keras.losses.MeanSquaredError(),
         metrics=[keras.metrics.MeanAbsoluteError(name="mae")],
     )
     # Read the training data.
@@ -120,7 +123,11 @@ def run_experiment(model):
     # Read the test data.
     eval_dataset = get_dataset_from_csv("eval_data.csv", batch_size, shuffle=False)
     # Fit the model with the training data.
-    history = model.fit(train_dataset, epochs=num_epochs, validation_data=eval_dataset,)
+    history = model.fit(
+        train_dataset,
+        epochs=num_epochs,
+        validation_data=eval_dataset,
+    )
     return history
 
 
@@ -223,14 +230,20 @@ like `Add` and `Concatenate`.
 
 class QREmbedding(keras.layers.Layer):
     def __init__(self, vocabulary, embedding_dim, num_buckets, name=None):
-        super(QREmbedding, self).__init__(name=name)
+        super().__init__(name=name)
         self.num_buckets = num_buckets
 
         self.index_lookup = StringLookup(
             vocabulary=vocabulary, mask_token=None, num_oov_indices=0
         )
-        self.q_embeddings = layers.Embedding(num_buckets, embedding_dim,)
-        self.r_embeddings = layers.Embedding(num_buckets, embedding_dim,)
+        self.q_embeddings = layers.Embedding(
+            num_buckets,
+            embedding_dim,
+        )
+        self.r_embeddings = layers.Embedding(
+            num_buckets,
+            embedding_dim,
+        )
 
     def call(self, inputs):
         # Get the item index.
@@ -278,7 +291,7 @@ class MDEmbedding(keras.layers.Layer):
     def __init__(
         self, blocks_vocabulary, blocks_embedding_dims, base_embedding_dim, name=None
     ):
-        super(MDEmbedding, self).__init__(name=name)
+        super().__init__(name=name)
         self.num_blocks = len(blocks_vocabulary)
 
         # Create vocab to block lookup.
@@ -366,7 +379,7 @@ user_embedding_num_buckets = len(user_vocabulary) // 50
 
 def create_memory_efficient_model():
     # Take the user as an input.
-    user_input = layers.Input(name="user_id", shape=(), dtype=tf.string)
+    user_input = layers.Input(name="user_id", shape=(), dtype="string")
     # Get user embedding.
     user_embedding = QREmbedding(
         vocabulary=user_vocabulary,
@@ -376,7 +389,7 @@ def create_memory_efficient_model():
     )(user_input)
 
     # Take the movie as an input.
-    movie_input = layers.Input(name="movie_id", shape=(), dtype=tf.string)
+    movie_input = layers.Input(name="movie_id", shape=(), dtype="string")
     # Get embedding.
     movie_embedding = MDEmbedding(
         blocks_vocabulary=movie_blocks_vocabulary,
@@ -415,3 +428,8 @@ plt.ylabel("loss")
 plt.xlabel("epoch")
 plt.legend(["train", "eval"], loc="upper left")
 plt.show()
+
+"""
+## Relevant Chapters from Deep Learning with Python
+- [Chapter 14: Text classification](https://deeplearningwithpython.io/chapters/chapter14_text-classification)
+"""

@@ -2,8 +2,9 @@
 Title: Image classification with Perceiver
 Author: [Khalid Salama](https://www.linkedin.com/in/khalid-salama-24403144/)
 Date created: 2021/04/30
-Last modified: 2021/01/30
+Last modified: 2023/12/30
 Description: Implementing the Perceiver model for image classification.
+Accelerator: GPU
 """
 
 """
@@ -27,24 +28,15 @@ and performs two operations iteratively:
 1. Cross-attention Transformer between the latent array and the data array - The complexity of this operation is `O(M.N)`.
 2. Self-attention Transformer on the latent array -  The complexity of this operation is `O(N^2)`.
 
-This example requires TensorFlow 2.4 or higher, as well as
-[TensorFlow Addons](https://www.tensorflow.org/addons/overview),
-which can be installed using the following command:
-
-```python
-pip install -U tensorflow-addons
-```
+This example requires Keras 3.0 or higher.
 """
 
 """
 ## Setup
 """
 
-import numpy as np
-import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras import layers
-import tensorflow_addons as tfa
+import keras
+from keras import layers, activations, ops
 
 """
 ## Prepare the data
@@ -65,7 +57,7 @@ print(f"x_test shape: {x_test.shape} - y_test shape: {y_test.shape}")
 learning_rate = 0.001
 weight_decay = 0.0001
 batch_size = 64
-num_epochs = 50
+num_epochs = 2  # It is recommended to run 50 epochs to observe improvements in accuracy
 dropout_rate = 0.2
 image_size = 64  # We'll resize input images to this size.
 patch_size = 2  # Size of the patches to be extract from the input images.
@@ -120,7 +112,7 @@ data_augmentation.layers[0].adapt(x_train)
 def create_ffn(hidden_units, dropout_rate):
     ffn_layers = []
     for units in hidden_units[:-1]:
-        ffn_layers.append(layers.Dense(units, activation=tf.nn.gelu))
+        ffn_layers.append(layers.Dense(units, activation=activations.gelu))
 
     ffn_layers.append(layers.Dense(units=hidden_units[-1]))
     ffn_layers.append(layers.Dropout(dropout_rate))
@@ -136,20 +128,20 @@ def create_ffn(hidden_units, dropout_rate):
 
 class Patches(layers.Layer):
     def __init__(self, patch_size):
-        super(Patches, self).__init__()
+        super().__init__()
         self.patch_size = patch_size
 
     def call(self, images):
-        batch_size = tf.shape(images)[0]
-        patches = tf.image.extract_patches(
+        batch_size = ops.shape(images)[0]
+        patches = ops.image.extract_patches(
             images=images,
-            sizes=[1, self.patch_size, self.patch_size, 1],
-            strides=[1, self.patch_size, self.patch_size, 1],
-            rates=[1, 1, 1, 1],
-            padding="VALID",
+            size=(self.patch_size, self.patch_size),
+            strides=(self.patch_size, self.patch_size),
+            dilation_rate=1,
+            padding="valid",
         )
         patch_dims = patches.shape[-1]
-        patches = tf.reshape(patches, [batch_size, -1, patch_dims])
+        patches = ops.reshape(patches, [batch_size, -1, patch_dims])
         return patches
 
 
@@ -166,7 +158,7 @@ Note that the orginal Perceiver paper uses the Fourier feature positional encodi
 
 class PatchEncoder(layers.Layer):
     def __init__(self, num_patches, projection_dim):
-        super(PatchEncoder, self).__init__()
+        super().__init__()
         self.num_patches = num_patches
         self.projection = layers.Dense(units=projection_dim)
         self.position_embedding = layers.Embedding(
@@ -174,7 +166,7 @@ class PatchEncoder(layers.Layer):
         )
 
     def call(self, patches):
-        positions = tf.range(start=0, limit=self.num_patches, delta=1)
+        positions = ops.arange(start=0, stop=self.num_patches, step=1)
         encoded = self.projection(patches) + self.position_embedding(positions)
         return encoded
 
@@ -203,12 +195,13 @@ where the `data_dim` is set to the `num_patches`.
 def create_cross_attention_module(
     latent_dim, data_dim, projection_dim, ffn_units, dropout_rate
 ):
-
     inputs = {
         # Recieve the latent array as an input of shape [1, latent_dim, projection_dim].
-        "latent_array": layers.Input(shape=(latent_dim, projection_dim)),
+        "latent_array": layers.Input(
+            shape=(latent_dim, projection_dim), name="latent_array"
+        ),
         # Recieve the data_array (encoded image) as an input of shape [batch_size, data_dim, projection_dim].
-        "data_array": layers.Input(shape=(data_dim, projection_dim)),
+        "data_array": layers.Input(shape=(data_dim, projection_dim), name="data_array"),
     }
 
     # Apply layer norm to the inputs
@@ -259,7 +252,6 @@ def create_transformer_module(
     ffn_units,
     dropout_rate,
 ):
-
     # input_shape: [1, latent_dim, projection_dim]
     inputs = layers.Input(shape=(latent_dim, projection_dim))
 
@@ -310,7 +302,7 @@ class Perceiver(keras.Model):
         num_iterations,
         classifier_units,
     ):
-        super(Perceiver, self).__init__()
+        super().__init__()
 
         self.latent_dim = latent_dim
         self.data_dim = data_dim
@@ -364,7 +356,7 @@ class Perceiver(keras.Model):
             hidden_units=self.classifier_units, dropout_rate=self.dropout_rate
         )
 
-        super(Perceiver, self).build(input_shape)
+        super().build(input_shape)
 
     def call(self, inputs):
         # Augment data.
@@ -375,7 +367,7 @@ class Perceiver(keras.Model):
         encoded_patches = self.patch_encoder(patches)
         # Prepare cross-attention inputs.
         cross_attention_inputs = {
-            "latent_array": tf.expand_dims(self.latent_array, 0),
+            "latent_array": ops.expand_dims(self.latent_array, 0),
             "data_array": encoded_patches,
         }
         # Apply the cross-attention and the Transformer modules iteratively.
@@ -400,11 +392,8 @@ class Perceiver(keras.Model):
 
 
 def run_experiment(model):
-
-    # Create LAMB optimizer with weight decay.
-    optimizer = tfa.optimizers.LAMB(
-        learning_rate=learning_rate, weight_decay_rate=weight_decay,
-    )
+    # Create ADAM instead of LAMB optimizer with weight decay. (LAMB isn't supported yet)
+    optimizer = keras.optimizers.Adam(learning_rate=learning_rate)
 
     # Compile the model.
     model.compile(
@@ -422,7 +411,7 @@ def run_experiment(model):
     )
 
     # Create an early stopping callback.
-    early_stopping = tf.keras.callbacks.EarlyStopping(
+    early_stopping = keras.callbacks.EarlyStopping(
         monitor="val_loss", patience=15, restore_best_weights=True
     )
 
@@ -477,4 +466,9 @@ and use different patch sizes.
 
 The Perceiver benefits from inceasing the model size. However, larger models needs bigger accelerators
 to fit in and train efficiently. This is why in the Perceiver paper they used 32 TPU cores to run the experiments.
+"""
+
+"""
+## Relevant Chapters from Deep Learning with Python
+- [Chapter 8: Image classification](https://deeplearningwithpython.io/chapters/chapter08_image-classification)
 """

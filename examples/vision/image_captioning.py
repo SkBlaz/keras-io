@@ -4,6 +4,7 @@ Author: [A_K_Nain](https://twitter.com/A_K_Nain)
 Date created: 2021/05/29
 Last modified: 2021/10/31
 Description: Implement an image captioning model using a CNN and a Transformer.
+Accelerator: GPU
 """
 
 """
@@ -11,20 +12,20 @@ Description: Implement an image captioning model using a CNN and a Transformer.
 """
 
 import os
+
+os.environ["KERAS_BACKEND"] = "tensorflow"
+
 import re
 import numpy as np
 import matplotlib.pyplot as plt
 
 import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras import layers
-from tensorflow.keras.applications import efficientnet
-from tensorflow.keras.layers import TextVectorization
+import keras
+from keras import layers
+from keras.applications import efficientnet
+from keras.layers import TextVectorization
 
-
-seed = 111
-np.random.seed(seed)
-tf.random.set_seed(seed)
+keras.utils.set_random_seed(111)
 
 """
 ## Download the dataset
@@ -227,7 +228,7 @@ def process_input(img_path, captions):
 
 def make_dataset(images, captions):
     dataset = tf.data.Dataset.from_tensor_slices((images, captions))
-    dataset = dataset.shuffle(len(images))
+    dataset = dataset.shuffle(BATCH_SIZE * 8)
     dataset = dataset.map(process_input, num_parallel_calls=AUTOTUNE)
     dataset = dataset.batch(BATCH_SIZE).prefetch(AUTOTUNE)
 
@@ -255,7 +256,9 @@ Our image captioning architecture consists of three models:
 
 def get_cnn_model():
     base_model = efficientnet.EfficientNetB0(
-        input_shape=(*IMAGE_SIZE, 3), include_top=False, weights="imagenet",
+        input_shape=(*IMAGE_SIZE, 3),
+        include_top=False,
+        weights="imagenet",
     )
     # We freeze our feature extractor
     base_model.trainable = False
@@ -339,7 +342,9 @@ class TransformerDecoderBlock(layers.Layer):
         self.layernorm_3 = layers.LayerNormalization()
 
         self.embedding = PositionalEmbedding(
-            embed_dim=EMBED_DIM, sequence_length=SEQ_LENGTH, vocab_size=VOCAB_SIZE
+            embed_dim=EMBED_DIM,
+            sequence_length=SEQ_LENGTH,
+            vocab_size=VOCAB_SIZE,
         )
         self.out = layers.Dense(VOCAB_SIZE, activation="softmax")
 
@@ -391,7 +396,10 @@ class TransformerDecoderBlock(layers.Layer):
         mask = tf.cast(i >= j, dtype="int32")
         mask = tf.reshape(mask, (1, input_shape[1], input_shape[1]))
         mult = tf.concat(
-            [tf.expand_dims(batch_size, -1), tf.constant([1, 1], dtype=tf.int32)],
+            [
+                tf.expand_dims(batch_size, -1),
+                tf.constant([1, 1], dtype=tf.int32),
+            ],
             axis=0,
         )
         return tf.tile(mask, mult)
@@ -399,7 +407,12 @@ class TransformerDecoderBlock(layers.Layer):
 
 class ImageCaptioningModel(keras.Model):
     def __init__(
-        self, cnn_model, encoder, decoder, num_captions_per_image=5, image_aug=None,
+        self,
+        cnn_model,
+        encoder,
+        decoder,
+        num_captions_per_image=5,
+        image_aug=None,
     ):
         super().__init__()
         self.cnn_model = cnn_model
@@ -476,7 +489,10 @@ class ImageCaptioningModel(keras.Model):
         self.acc_tracker.update_state(batch_acc)
 
         # 8. Return the loss and accuracy values
-        return {"loss": self.loss_tracker.result(), "acc": self.acc_tracker.result()}
+        return {
+            "loss": self.loss_tracker.result(),
+            "acc": self.acc_tracker.result(),
+        }
 
     def test_step(self, batch_data):
         batch_img, batch_seq = batch_data
@@ -505,7 +521,10 @@ class ImageCaptioningModel(keras.Model):
         self.acc_tracker.update_state(batch_acc)
 
         # 5. Return the loss and accuracy values
-        return {"loss": self.loss_tracker.result(), "acc": self.acc_tracker.result()}
+        return {
+            "loss": self.loss_tracker.result(),
+            "acc": self.acc_tracker.result(),
+        }
 
     @property
     def metrics(self):
@@ -518,7 +537,10 @@ cnn_model = get_cnn_model()
 encoder = TransformerEncoderBlock(embed_dim=EMBED_DIM, dense_dim=FF_DIM, num_heads=1)
 decoder = TransformerDecoderBlock(embed_dim=EMBED_DIM, ff_dim=FF_DIM, num_heads=2)
 caption_model = ImageCaptioningModel(
-    cnn_model=cnn_model, encoder=encoder, decoder=decoder, image_aug=image_augmentation,
+    cnn_model=cnn_model,
+    encoder=encoder,
+    decoder=decoder,
+    image_aug=image_augmentation,
 )
 
 """
@@ -528,7 +550,8 @@ caption_model = ImageCaptioningModel(
 
 # Define the loss function
 cross_entropy = keras.losses.SparseCategoricalCrossentropy(
-    from_logits=False, reduction="none"
+    from_logits=False,
+    reduction=None,
 )
 
 # EarlyStopping criteria
@@ -607,7 +630,7 @@ def generate_caption():
         )
         sampled_token_index = np.argmax(predictions[0, i, :])
         sampled_token = index_lookup[sampled_token_index]
-        if sampled_token == " <end>":
+        if sampled_token == "<end>":
             break
         decoded_caption += " " + sampled_token
 
@@ -628,4 +651,10 @@ We saw that the model starts to generate reasonable captions after a few epochs.
 this example easily runnable, we have trained it with a few constraints, like a minimal
 number of attention heads. To improve the predictions, you can try changing these training
 settings and find a good model for your use case.
+"""
+
+"""
+## Relevant Chapters from Deep Learning with Python
+- [Chapter 15: Language models and the Transformer](https://deeplearningwithpython.io/chapters/chapter15_language-models-and-the-transformer)
+- [Chapter 16: Text generation](https://deeplearningwithpython.io/chapters/chapter16_text-generation)
 """

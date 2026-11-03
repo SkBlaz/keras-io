@@ -2,9 +2,11 @@
 Title: 3D volumetric rendering with NeRF
 Authors: [Aritra Roy Gosthipaty](https://twitter.com/arig23498), [Ritwik Raha](https://twitter.com/ritwik_raha)
 Date created: 2021/08/09
-Last modified: 2021/08/09
+Last modified: 2023/11/13
 Description: Minimal implementation of volumetric rendering as shown in NeRF.
+Accelerator: GPU
 """
+
 """
 ## Introduction
 
@@ -53,19 +55,23 @@ implementation.
 """
 ## Setup
 """
+import os
+
+os.environ["KERAS_BACKEND"] = "tensorflow"
 
 # Setting random seed to obtain reproducible results.
 import tensorflow as tf
 
 tf.random.set_seed(42)
 
+import keras
+from keras import layers
+
 import os
 import glob
-import imageio
+import imageio.v2 as imageio
 import numpy as np
 from tqdm import tqdm
-from tensorflow import keras
-from tensorflow.keras import layers
 import matplotlib.pyplot as plt
 
 # Initialize global variables.
@@ -123,16 +129,16 @@ more about COLMAP [here](https://colmap.github.io/).
 """
 
 # Download the data if it does not already exist.
-file_name = "tiny_nerf_data.npz"
-url = "https://people.eecs.berkeley.edu/~bmild/nerf/tiny_nerf_data.npz"
-if not os.path.exists(file_name):
-    data = keras.utils.get_file(fname=file_name, origin=url)
+url = (
+    "http://cseweb.ucsd.edu/~viscomp/projects/LF/papers/ECCV20/nerf/tiny_nerf_data.npz"
+)
+data = keras.utils.get_file(origin=url)
 
 data = np.load(data)
 images = data["images"]
 im_shape = images.shape
-(num_images, H, W, _) = images.shape
-(poses, focal) = (data["poses"], data["focal"])
+num_images, H, W, _ = images.shape
+poses, focal = (data["poses"], data["focal"])
 
 # Plot a random image from the dataset for visualization.
 plt.imshow(images[np.random.randint(low=0, high=num_images)])
@@ -206,7 +212,7 @@ def encode_position(x):
     positions = [x]
     for i in range(POS_ENCODE_DIMS):
         for fn in [tf.sin, tf.cos]:
-            positions.append(fn(2.0 ** i * x))
+            positions.append(fn(2.0**i * x))
     return tf.concat(positions, axis=-1)
 
 
@@ -295,8 +301,8 @@ def map_fn(pose):
         Tuple of flattened rays and sample points corresponding to the
         camera pose.
     """
-    (ray_origins, ray_directions) = get_rays(height=H, width=W, focal=focal, pose=pose)
-    (rays_flat, t_vals) = render_flat_rays(
+    ray_origins, ray_directions = get_rays(height=H, width=W, focal=focal, pose=pose)
+    rays_flat, t_vals = render_flat_rays(
         ray_origins=ray_origins,
         ray_directions=ray_directions,
         near=2.0,
@@ -372,7 +378,7 @@ def get_nerf_model(num_layers, num_pos):
         num_pos: The number of dimensions of positional encoding.
 
     Returns:
-        The `tf.keras` model.
+        The `keras` model.
     """
     inputs = keras.Input(shape=(num_pos, 2 * 3 * POS_ENCODE_DIMS + 3))
     x = inputs
@@ -461,8 +467,8 @@ class NeRF(keras.Model):
 
     def train_step(self, inputs):
         # Get the images and the rays.
-        (images, rays) = inputs
-        (rays_flat, t_vals) = rays
+        images, rays = inputs
+        rays_flat, t_vals = rays
 
         with tf.GradientTape() as tape:
             # Get the predictions from the model.
@@ -490,8 +496,8 @@ class NeRF(keras.Model):
 
     def test_step(self, inputs):
         # Get the images and the rays.
-        (images, rays) = inputs
-        (rays_flat, t_vals) = rays
+        images, rays = inputs
+        rays_flat, t_vals = rays
 
         # Get the predictions from the model.
         rgb, _ = render_rgb_depth(
@@ -532,10 +538,10 @@ class TrainMonitor(keras.callbacks.Callback):
 
         # Plot the rgb, depth and the loss plot.
         fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(20, 5))
-        ax[0].imshow(keras.preprocessing.image.array_to_img(test_recons_images[0]))
+        ax[0].imshow(keras.utils.array_to_img(test_recons_images[0]))
         ax[0].set_title(f"Predicted Image: {epoch:03d}")
 
-        ax[1].imshow(keras.preprocessing.image.array_to_img(depth_maps[0, ..., None]))
+        ax[1].imshow(keras.utils.array_to_img(depth_maps[0, ..., None]))
         ax[1].set_title(f"Depth Map: {epoch:03d}")
 
         ax[2].plot(loss_list)
@@ -565,7 +571,6 @@ model.fit(
     batch_size=BATCH_SIZE,
     epochs=EPOCHS,
     callbacks=[TrainMonitor()],
-    steps_per_epoch=split_index // BATCH_SIZE,
 )
 
 
@@ -622,15 +627,13 @@ fig, axes = plt.subplots(nrows=5, ncols=3, figsize=(10, 20))
 for ax, ori_img, recons_img, depth_map in zip(
     axes, test_imgs, test_recons_images, depth_maps
 ):
-    ax[0].imshow(keras.preprocessing.image.array_to_img(ori_img))
+    ax[0].imshow(keras.utils.array_to_img(ori_img))
     ax[0].set_title("Original")
 
-    ax[1].imshow(keras.preprocessing.image.array_to_img(recons_img))
+    ax[1].imshow(keras.utils.array_to_img(recons_img))
     ax[1].set_title("Reconstructed")
 
-    ax[2].imshow(
-        keras.preprocessing.image.array_to_img(depth_map[..., None]), cmap="inferno"
-    )
+    ax[2].imshow(keras.utils.array_to_img(depth_map[..., None]), cmap="inferno")
     ax[2].set_title("Depth Map")
 
 """
@@ -751,8 +754,8 @@ have also provided the outputs of the model trained for more epochs.
 
 ## Way forward
 
-If anyone is interested to go deeper into NeRF, we have built a 3-part blog 
-series at [PyImageSearch](www.pyimagesearch.com).
+If anyone is interested to go deeper into NeRF, we have built a 3-part blog
+series at [PyImageSearch](https://pyimagesearch.com/).
 
 - [Prerequisites of NeRF](https://www.pyimagesearch.com/2021/11/10/computer-graphics-and-deep-learning-with-nerf-using-tensorflow-and-keras-part-1/)
 - [Concepts of NeRF](https://www.pyimagesearch.com/2021/11/17/computer-graphics-and-deep-learning-with-nerf-using-tensorflow-and-keras-part-2/)
@@ -769,4 +772,6 @@ series at [PyImageSearch](www.pyimagesearch.com).
     Mathworks for the camera calibration article.
 - [Mathew's video](https://www.youtube.com/watch?v=dPWLybp4LL0): A
     great video on NeRF.
+
+You can try the model on [Hugging Face Spaces](https://huggingface.co/spaces/keras-io/NeRF).
 """

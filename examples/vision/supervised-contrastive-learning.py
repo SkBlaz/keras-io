@@ -2,9 +2,12 @@
 Title: Supervised Contrastive Learning
 Author: [Khalid Salama](https://www.linkedin.com/in/khalid-salama-24403144/)
 Date created: 2020/11/30
-Last modified: 2020/11/30
+Last modified: 2026/08/19
 Description: Using supervised contrastive learning for image classification.
+Accelerator: GPU
+Converted to Keras 3 by: [LakshmiKalaKadali](https://github.com/LakshmiKalaKadali)
 """
+
 """
 ## Introduction
 
@@ -20,27 +23,22 @@ that representations of images in the same class will be more similar compared t
 representations of images in different classes.
 2. Training a classifier on top of the frozen encoder.
 
-Note that this example requires [TensorFlow Addons](https://www.tensorflow.org/addons),
-which you can install using the following command:
-
-```python
-pip install tensorflow-addons
-```
-
 ## Setup
 """
 
-import tensorflow as tf
-import tensorflow_addons as tfa
-import numpy as np
-from tensorflow import keras
-from tensorflow.keras import layers
+import os
+
+os.environ["KERAS_BACKEND"] = "jax"  # or "tensorflow" or "torch"
+
+import keras
+from keras import layers
+from keras import ops
 
 """
 ## Prepare the data
 """
 
-num_classes = 10
+num_classes = 50
 input_shape = (32, 32, 3)
 
 # Load the train and test data splits
@@ -60,8 +58,6 @@ data_augmentation = keras.Sequential(
         layers.Normalization(),
         layers.RandomFlip("horizontal"),
         layers.RandomRotation(0.02),
-        layers.RandomWidth(0.2),
-        layers.RandomHeight(0.2),
     ]
 )
 
@@ -95,7 +91,7 @@ learning_rate = 0.001
 batch_size = 265
 hidden_units = 512
 projection_units = 128
-num_epochs = 50
+num_epochs = 10
 dropout_rate = 0.5
 temperature = 0.05
 
@@ -108,7 +104,6 @@ plus a softmax layer with the target classes.
 
 
 def create_classifier(encoder, trainable=True):
-
     for layer in encoder.layers:
         layer.trainable = trainable
 
@@ -162,21 +157,39 @@ softmax are optimized.
 
 
 class SupervisedContrastiveLoss(keras.losses.Loss):
-    def __init__(self, temperature=1, name=None):
-        super(SupervisedContrastiveLoss, self).__init__(name=name)
+    def __init__(self, temperature=0.05, **kwargs):
+        super().__init__(**kwargs)
         self.temperature = temperature
 
-    def __call__(self, labels, feature_vectors, sample_weight=None):
-        # Normalize feature vectors
-        feature_vectors_normalized = tf.math.l2_normalize(feature_vectors, axis=1)
-        # Compute logits
-        logits = tf.divide(
-            tf.matmul(
-                feature_vectors_normalized, tf.transpose(feature_vectors_normalized)
-            ),
+    def call(self, labels, feature_vectors):
+        feature_vectors = ops.normalize(feature_vectors, axis=1)
+
+        logits = ops.divide(
+            ops.matmul(feature_vectors, ops.transpose(feature_vectors)),
             self.temperature,
         )
-        return tfa.losses.npairs_loss(tf.squeeze(labels), logits)
+
+        # Create a mask to find positive pairs (images of same class)
+        labels = ops.cast(labels, "int32")
+        labels = ops.reshape(labels, (-1, 1))
+        mask = ops.cast(ops.equal(labels, ops.transpose(labels)), "float32")
+
+        batch_size = ops.shape(logits)[0]
+        logits_mask = 1.0 - ops.eye(batch_size)
+        mask = mask * logits_mask
+
+        logits_max = ops.max(logits, axis=1, keepdims=True)
+        logits_exp = ops.exp(logits - logits_max) * logits_mask
+
+        log_prob = (logits - logits_max) - ops.log(
+            ops.sum(logits_exp, axis=1, keepdims=True) + 1e-8
+        )
+
+        mean_log_prob_pos = ops.sum(mask * log_prob, axis=1) / (
+            ops.sum(mask, axis=1) + 1e-8
+        )
+
+        return ops.subtract(0.0, ops.mean(mean_log_prob_pos))
 
 
 def add_projection_head(encoder):
@@ -204,7 +217,10 @@ encoder_with_projection_head.compile(
 encoder_with_projection_head.summary()
 
 history = encoder_with_projection_head.fit(
-    x=x_train, y=y_train, batch_size=batch_size, epochs=num_epochs
+    x=x_train,
+    y=y_train,
+    batch_size=batch_size,
+    epochs=num_epochs,
 )
 
 """
@@ -234,4 +250,6 @@ In addition, large batch sizes and multi-layer projection heads
 improve its effectiveness. See the [Supervised Contrastive Learning](https://arxiv.org/abs/2004.11362)
 paper for more details.
 
+You can use the trained model hosted on [Hugging Face Hub](https://huggingface.co/keras-io/supervised-contrastive-learning-cifar10)
+and try the demo on [Hugging Face Spaces](https://huggingface.co/spaces/keras-io/supervised-contrastive-learning).
 """

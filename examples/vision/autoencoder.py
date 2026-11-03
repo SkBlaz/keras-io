@@ -4,6 +4,7 @@ Author: [Santiago L. Valdarrama](https://twitter.com/svpino)
 Date created: 2021/03/01
 Last modified: 2021/03/01
 Description: How to train a deep convolutional autoencoder for image denoising.
+Accelerator: GPU
 """
 
 """
@@ -21,29 +22,22 @@ by [François Chollet](https://twitter.com/fchollet).
 """
 
 import numpy as np
-import tensorflow as tf
 import matplotlib.pyplot as plt
 
-from tensorflow.keras import layers
-from tensorflow.keras.datasets import mnist
-from tensorflow.keras.models import Model
+from keras import layers
+from keras.datasets import mnist
+from keras.models import Model
 
 
 def preprocess(array):
-    """
-    Normalizes the supplied array and reshapes it into the appropriate format.
-    """
-
+    """Normalizes the supplied array and reshapes it."""
     array = array.astype("float32") / 255.0
     array = np.reshape(array, (len(array), 28, 28, 1))
     return array
 
 
 def noise(array):
-    """
-    Adds random noise to each image in the supplied array.
-    """
-
+    """Adds random noise to each image in the supplied array."""
     noise_factor = 0.4
     noisy_array = array + noise_factor * np.random.normal(
         loc=0.0, scale=1.0, size=array.shape
@@ -53,12 +47,8 @@ def noise(array):
 
 
 def display(array1, array2):
-    """
-    Displays ten random images from each one of the supplied arrays.
-    """
-
+    """Displays ten random images from each array."""
     n = 10
-
     indices = np.random.randint(len(array1), size=n)
     images1 = array1[indices, :]
     images2 = array2[indices, :]
@@ -173,3 +163,8 @@ input images.
 
 predictions = autoencoder.predict(noisy_test_data)
 display(noisy_test_data, predictions)
+
+"""
+## Relevant Chapters from Deep Learning with Python
+- [Chapter 17: Image generation](https://deeplearningwithpython.io/chapters/chapter17_image-generation)
+"""

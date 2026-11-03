@@ -2,8 +2,9 @@
 Title: Image similarity estimation using a Siamese Network with a contrastive loss
 Author: Mehdi
 Date created: 2021/05/06
-Last modified: 2021/05/06
+Last modified: 2026/01/28
 Description: Similarity learning using a siamese network trained with a contrastive loss.
+Accelerator: GPU
 """
 
 """
@@ -25,9 +26,9 @@ the class segmentation of the training inputs.
 
 import random
 import numpy as np
-import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras import layers
+import keras
+from keras import layers
+from keras import ops
 import matplotlib.pyplot as plt
 
 """
@@ -36,7 +37,7 @@ import matplotlib.pyplot as plt
 
 epochs = 10
 batch_size = 16
-margin = 1  # Margin for constrastive loss.
+margin = 1  # Margin for contrastive loss.
 
 """
 ## Load the MNIST dataset
@@ -100,7 +101,7 @@ def make_pairs(x, y):
         x2 = x[idx2]
 
         pairs += [[x1, x2]]
-        labels += [1]
+        labels += [0]
 
         # add a non-matching example
         label2 = random.randint(0, num_classes - 1)
@@ -111,7 +112,7 @@ def make_pairs(x, y):
         x2 = x[idx2]
 
         pairs += [[x1, x2]]
-        labels += [0]
+        labels += [1]
 
     return np.array(pairs), np.array(labels).astype("float32")
 
@@ -206,14 +207,13 @@ def visualize(pairs, labels, to_show=6, num_col=3, predictions=None, test=False)
     # Plot the images
     fig, axes = plt.subplots(num_row, num_col, figsize=(5, 5))
     for i in range(to_show):
-
         # If the number of rows is 1, the axes array is one-dimensional
         if num_row == 1:
             ax = axes[i % num_col]
         else:
             ax = axes[i // num_col, i % num_col]
 
-        ax.imshow(tf.concat([pairs[i][0], pairs[i][1]], axis=1), cmap="gray")
+        ax.imshow(ops.concatenate([pairs[i][0], pairs[i][1]], axis=1), cmap="gray")
         ax.set_axis_off()
         if test:
             ax.set_title("True: {} | Pred: {:.5f}".format(labels[i], predictions[i][0]))
@@ -247,11 +247,12 @@ visualize(pairs_test[:-1], labels_test[:-1], to_show=4, num_col=4)
 """
 ## Define the model
 
-There are be two input layers, each leading to its own network, which
+There are two input layers, each leading to its own network, which
 produces embeddings. A `Lambda` layer then merges them using an
 [Euclidean distance](https://en.wikipedia.org/wiki/Euclidean_distance) and the
 merged output is fed to the final network.
 """
+
 
 # Provided two tensors t1 and t2
 # Euclidean distance = sqrt(sum(square(t1-t2)))
@@ -265,24 +266,47 @@ def euclidean_distance(vects):
         Tensor containing euclidean distance
         (as floating point value) between vectors.
     """
-
     x, y = vects
-    sum_square = tf.math.reduce_sum(tf.math.square(x - y), axis=1, keepdims=True)
-    return tf.math.sqrt(tf.math.maximum(sum_square, tf.keras.backend.epsilon()))
+    sum_square = ops.sum(ops.square(x - y), axis=1, keepdims=True)
+    return ops.sqrt(ops.maximum(sum_square, keras.backend.epsilon()))
 
 
-input = layers.Input((28, 28, 1))
-x = tf.keras.layers.BatchNormalization()(input)
-x = layers.Conv2D(4, (5, 5), activation="tanh")(x)
-x = layers.AveragePooling2D(pool_size=(2, 2))(x)
-x = layers.Conv2D(16, (5, 5), activation="tanh")(x)
-x = layers.AveragePooling2D(pool_size=(2, 2))(x)
-x = layers.Flatten()(x)
+def create_embedding_network():
+    """Creates a convolutional neural network for image embedding.
 
-x = tf.keras.layers.BatchNormalization()(x)
-x = layers.Dense(10, activation="tanh")(x)
-embedding_network = keras.Model(input, x)
+    The network takes a grayscale image as input and outputs a 10-dimensional
+    latent representation (embedding). It uses a series of Conv2D and
+    AveragePooling2D layers to extract features, followed by a Dense layer
+    with tanh activation.
 
+    Architecture:
+        - Input: (28, 28, 1)
+        - BatchNormalization
+        - Conv2D (4 filters, 5x5 kernel, tanh)
+        - AveragePooling2D (2x2)
+        - Conv2D (16 filters, 5x5 kernel, tanh)
+        - AveragePooling2D (2x2)
+        - Flatten
+        - BatchNormalization
+        - Dense (10 units, tanh)
+
+    Returns:
+        keras.Model: A Functional API model instance mapping (28, 28, 1) images
+            to 10D embedding vectors.
+    """
+    inputs = layers.Input((28, 28, 1))
+    x = layers.BatchNormalization()(inputs)
+    x = layers.Conv2D(4, (5, 5), activation="tanh")(x)
+    x = layers.AveragePooling2D(pool_size=(2, 2))(x)
+    x = layers.Conv2D(16, (5, 5), activation="tanh")(x)
+    x = layers.AveragePooling2D(pool_size=(2, 2))(x)
+    x = layers.Flatten()(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.Dense(10, activation="tanh")(x)
+    return keras.Model(inputs, x, name="embedding")
+
+
+embedding_network = create_embedding_network()
 
 input_1 = layers.Input((28, 28, 1))
 input_2 = layers.Input((28, 28, 1))
@@ -293,56 +317,80 @@ input_2 = layers.Input((28, 28, 1))
 tower_1 = embedding_network(input_1)
 tower_2 = embedding_network(input_2)
 
-merge_layer = layers.Lambda(euclidean_distance)([tower_1, tower_2])
-normal_layer = tf.keras.layers.BatchNormalization()(merge_layer)
-output_layer = layers.Dense(1, activation="sigmoid")(normal_layer)
-siamese = keras.Model(inputs=[input_1, input_2], outputs=output_layer)
+# Distance is the output, remove the final Dense Sigmoid layer
+distance = layers.Lambda(euclidean_distance)([tower_1, tower_2])
+siamese = keras.Model(inputs=[input_1, input_2], outputs=distance)
 
 
 """
-## Define the constrastive Loss
+## Define the contrastive Loss
 """
 
 
 def loss(margin=1):
-    """Provides 'constrastive_loss' an enclosing scope with variable 'margin'.
+    """Provides 'contrastive_loss' an enclosing scope with variable 'margin'.
 
-  Arguments:
-      margin: Integer, defines the baseline for distance for which pairs
-              should be classified as dissimilar. - (default is 1).
+    Arguments:
+        margin: Integer, defines the baseline for distance for which pairs
+                should be classified as dissimilar. - (default is 1).
 
-  Returns:
-      'constrastive_loss' function with data ('margin') attached.
-  """
+    Returns:
+        'contrastive_loss' function with data ('margin') attached.
+    """
 
     # Contrastive loss = mean( (1-true_value) * square(prediction) +
     #                         true_value * square( max(margin-prediction, 0) ))
     def contrastive_loss(y_true, y_pred):
-        """Calculates the constrastive loss.
+        """Calculates the contrastive loss.
 
-      Arguments:
-          y_true: List of labels, each label is of type float32.
-          y_pred: List of predictions of same length as of y_true,
-                  each label is of type float32.
+        Arguments:
+            y_true: List of labels, each label is of type float32.
+            y_pred: List of predictions of same length as of y_true,
+                    each label is of type float32.
 
-      Returns:
-          A tensor containing constrastive loss as floating point value.
-      """
+        Returns:
+            A tensor containing contrastive loss as floating point value.
+        """
 
-        square_pred = tf.math.square(y_pred)
-        margin_square = tf.math.square(tf.math.maximum(margin - (y_pred), 0))
-        return tf.math.reduce_mean(
-            (1 - y_true) * square_pred + (y_true) * margin_square
-        )
+        square_pred = ops.square(y_pred)
+        margin_square = ops.square(ops.maximum(margin - (y_pred), 0))
+        return ops.mean((1 - y_true) * square_pred + (y_true) * margin_square)
 
     return contrastive_loss
+
+
+"""
+## Define accuracy metric
+
+"""
+
+
+def accuracy(y_true, y_pred):
+    """Computes the accuracy of the predictions.
+
+    Arguments:
+        y_true: List of labels, each label is of type float32.
+        y_pred: List of predictions of same length as of y_true,
+                each label is of type float32.
+
+    Returns:
+        A tensor containing accuracy as floating point value.
+    """
+    y_true = ops.cast(y_true, "float32")
+
+    y_true = ops.reshape(y_true, [-1])
+    y_pred = ops.reshape(y_pred, [-1])
+
+    # 0 for similar (<0.5), 1 for dissimilar (>0.5)
+    preds = ops.cast(y_pred > 0.5, "float32")
+    return ops.mean(ops.equal(y_true, preds))
 
 
 """
 ## Compile the model with the contrastive loss
 """
 
-siamese.compile(loss=loss(margin=margin), optimizer="RMSprop", metrics=["accuracy"])
+siamese.compile(loss=loss(margin=margin), optimizer="RMSprop", metrics=[accuracy])
 siamese.summary()
 
 
@@ -388,8 +436,8 @@ def plt_metric(history, metric, title, has_valid=True):
 # Plot the accuracy
 plt_metric(history=history.history, metric="accuracy", title="Model accuracy")
 
-# Plot the constrastive loss
-plt_metric(history=history.history, metric="loss", title="Constrastive Loss")
+# Plot the contrastive loss
+plt_metric(history=history.history, metric="loss", title="Contrastive Loss")
 
 """
 ## Evaluate the model

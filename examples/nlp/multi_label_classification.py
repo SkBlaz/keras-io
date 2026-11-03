@@ -2,9 +2,12 @@
 Title: Large-scale multi-label text classification
 Author: [Sayak Paul](https://twitter.com/RisingSayak), [Soumik Rakshit](https://github.com/soumik12345)
 Date created: 2020/09/25
-Last modified: 2020/12/23
+Last modified: 2025/02/27
 Description: Implementing a large-scale multi-label text classification model.
+Accelerator: GPU
+Converted to keras 3 and made backend-agnostic by: [Humbulani Ndou](https://github.com/Humbulani1234)
 """
+
 """
 ## Introduction
 
@@ -28,13 +31,16 @@ Additionally, you can also find the dataset on
 ## Imports
 """
 
-from tensorflow.keras import layers
-from tensorflow import keras
-import tensorflow as tf
+import os
+
+os.environ["KERAS_BACKEND"] = "jax"  # or tensorflow, or torch
+
+import keras
+from keras import layers, ops
 
 from sklearn.model_selection import train_test_split
-from ast import literal_eval
 
+from ast import literal_eval
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
@@ -142,8 +148,11 @@ Now we preprocess our labels using the
 layer.
 """
 
+# For RaggedTensor
+import tensorflow as tf
+
 terms = tf.ragged.constant(train_df["terms"].values)
-lookup = tf.keras.layers.StringLookup(output_mode="multi_hot")
+lookup = layers.StringLookup(output_mode="multi_hot")
 lookup.adapt(terms)
 vocab = lookup.get_vocabulary()
 
@@ -310,17 +319,25 @@ are not disjoint. For a given abstract, we may have multiple categories. So, we 
 divide the prediction task into a series of multiple binary classification problems. This
 is also why we kept the activation function of the classification layer in our model to
 sigmoid. Researchers have used other combinations of loss function and activation
-function as well. For example, in
-[Exploring the Limits of Weakly Supervised Pretraining](https://arxiv.org/abs/1805.00932),
+function as well. For example, in [Exploring the Limits of Weakly Supervised Pretraining](https://arxiv.org/abs/1805.00932),
 Mahajan et al. used the softmax activation function and cross-entropy loss to train
 their models.
+
+There are several options of metrics that can be used in multi-label classification.
+To keep this code example narrow we decided to use the
+[binary accuracy metric](https://keras.io/api/metrics/accuracy_metrics/#binaryaccuracy-class).
+To see the explanation why this metric is used we refer to this
+[pull-request](https://github.com/keras-team/keras-io/pull/1133#issuecomment-1322736860).
+There are also other suitable metrics for multi-label classification, like
+[F1 Score](https://www.tensorflow.org/addons/api_docs/python/tfa/metrics/F1Score) or
+[Hamming loss](https://www.tensorflow.org/addons/api_docs/python/tfa/metrics/HammingLoss).
 """
 
 epochs = 20
 
 shallow_mlp_model = make_model()
 shallow_mlp_model.compile(
-    loss="binary_crossentropy", optimizer="adam", metrics=["categorical_accuracy"]
+    loss="binary_crossentropy", optimizer="adam", metrics=["binary_accuracy"]
 )
 
 history = shallow_mlp_model.fit(
@@ -340,7 +357,7 @@ def plot_result(item):
 
 
 plot_result("loss")
-plot_result("categorical_accuracy")
+plot_result("binary_accuracy")
 
 """
 While training, we notice an initial sharp fall in the loss followed by a gradual decay.
@@ -350,18 +367,18 @@ While training, we notice an initial sharp fall in the loss followed by a gradua
 ### Evaluate the model
 """
 
-_, categorical_acc = shallow_mlp_model.evaluate(test_dataset)
-print(f"Categorical accuracy on the test set: {round(categorical_acc * 100, 2)}%.")
+_, binary_acc = shallow_mlp_model.evaluate(test_dataset)
+print(f"Categorical accuracy on the test set: {round(binary_acc * 100, 2)}%.")
 
 """
-The trained model gives us an evaluation accuracy of ~87%.
+The trained model gives us an evaluation accuracy of ~99%.
 """
 
 """
 ## Inference
 
 An important feature of the
-[preprocessing layers provided by Keras](https://keras.io/guides/preprocessing_layers/)
+[preprocessing layers provided by Keras](https://keras.io/api/layers/preprocessing_layers/)
 is that they can be included inside a `tf.keras.Model`. We will export an inference model
 by including the `text_vectorization` layer on top of `shallow_mlp_model`. This will
 allow our inference model to directly operate on raw strings.
@@ -372,13 +389,33 @@ surfacing bottlenecks for the hardware accelerators. This also allows for
 asynchronous data processing.
 """
 
-# Create a model for inference.
-model_for_inference = keras.Sequential([text_vectorizer, shallow_mlp_model])
 
-# Create a small dataset just for demoing inference.
-inference_dataset = make_dataset(test_df.sample(100), is_train=False)
+# We create a custom Model to override the predict method so
+# that it first vectorizes text data
+class ModelEndtoEnd(keras.Model):
+
+    def predict(self, inputs):
+        indices = text_vectorizer(inputs)
+        return super().predict(indices)
+
+
+def get_inference_model(model):
+    inputs = shallow_mlp_model.inputs
+    outputs = shallow_mlp_model.outputs
+    end_to_end_model = ModelEndtoEnd(inputs, outputs, name="end_to_end_model")
+    end_to_end_model.compile(
+        optimizer="adam", loss="binary_crossentropy", metrics=["accuracy"]
+    )
+    return end_to_end_model
+
+
+model_for_inference = get_inference_model(shallow_mlp_model)
+
+# Create a small dataset just for demonstrating inference.
+inference_dataset = make_dataset(test_df.sample(2), is_train=False)
 text_batch, label_batch = next(iter(inference_dataset))
 predicted_probabilities = model_for_inference.predict(text_batch)
+
 
 # Perform inference.
 for i, text in enumerate(text_batch[:5]):
@@ -409,4 +446,11 @@ even those that use Transformers ([Vaswani et al.](https://arxiv.org/abs/1706.03
 We would like to thank [Matt Watson](https://github.com/mattdangerw) for helping us
 tackle the multi-label binarization part and inverse-transforming the processed labels
 to the original form.
+
+Thanks to [Cingis Kratochvil](https://github.com/cumbalik) for suggesting and extending this code example by introducing binary accuracy as the evaluation metric.
+"""
+
+"""
+## Relevant Chapters from Deep Learning with Python
+- [Chapter 14: Text classification](https://deeplearningwithpython.io/chapters/chapter14_text-classification)
 """

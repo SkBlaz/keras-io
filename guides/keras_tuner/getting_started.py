@@ -4,10 +4,10 @@ Authors: Luca Invernizzi, James Long, Francois Chollet, Tom O'Malley, Haifeng Ji
 Date created: 2019/05/31
 Last modified: 2021/10/27
 Description: The basics of using KerasTuner to tune model hyperparameters.
+Accelerator: GPU
 """
 
-"""
-## shell
+"""shell
 pip install keras-tuner -q
 """
 
@@ -36,8 +36,8 @@ whose range is from 32 to 512 inclusive. When sampling from it, the minimum
 step for walking through the interval is 32.
 """
 
-from tensorflow import keras
-from tensorflow.keras import layers
+import keras
+from keras import layers
 
 
 def build_model(hp):
@@ -52,7 +52,9 @@ def build_model(hp):
     )
     model.add(layers.Dense(10, activation="softmax"))
     model.compile(
-        optimizer="adam", loss="categorical_crossentropy", metrics=["accuracy"],
+        optimizer="adam",
+        loss="categorical_crossentropy",
+        metrics=["accuracy"],
     )
     return model
 
@@ -61,13 +63,13 @@ def build_model(hp):
 You can quickly test if the model builds successfully.
 """
 
-import keras_tuner as kt
+import keras_tuner
 
-build_model(kt.HyperParameters())
+build_model(keras_tuner.HyperParameters())
 
 """
 There are many other types of hyperparameters as well. We can define multiple
-hyperparameters in the function. In the following code, we tune the whether to
+hyperparameters in the function. In the following code, we tune whether to
 use a `Dropout` layer with `hp.Boolean()`, tune which activation function to
 use with `hp.Choice()`, tune the learning rate of the optimizer with
 `hp.Float()`.
@@ -99,7 +101,7 @@ def build_model(hp):
     return model
 
 
-build_model(kt.HyperParameters())
+build_model(keras_tuner.HyperParameters())
 
 """
 As shown below, the hyperparameters are actual values. In fact, they are just
@@ -108,7 +110,7 @@ value. Therefore, you can put them into variables, for loops, or if
 conditions.
 """
 
-hp = kt.HyperParameters()
+hp = keras_tuner.HyperParameters()
 print(hp.Int("units", min_value=32, max_value=512, step=32))
 
 """
@@ -144,7 +146,7 @@ def build_model(hp):
     return model
 
 
-build_model(kt.HyperParameters())
+build_model(keras_tuner.HyperParameters())
 
 """
 Each of the hyperparameters is uniquely identified by its name (the first
@@ -187,7 +189,7 @@ def build_model(hp):
     return model
 
 
-build_model(kt.HyperParameters())
+build_model(keras_tuner.HyperParameters())
 
 """
 ### Start the search
@@ -219,7 +221,7 @@ to start a new search and ignore any previous results.
 
 """
 
-tuner = kt.RandomSearch(
+tuner = keras_tuner.RandomSearch(
     hypermodel=build_model,
     objective="val_accuracy",
     max_trials=3,
@@ -239,7 +241,7 @@ tuner.search_space_summary()
 Before starting the search, let's prepare the MNIST dataset.
 """
 
-from tensorflow import keras
+import keras
 import numpy as np
 
 (x, y), (x_test, y_test) = keras.datasets.mnist.load_data()
@@ -282,9 +284,6 @@ its best performing epoch evaluated on the `validation_data`.
 # Get the top 2 models.
 models = tuner.get_best_models(num_models=2)
 best_model = models[0]
-# Build the model.
-# Needed for `Sequential` without specified `input_shape`.
-best_model.build(input_shape=(None, 28, 28))
 best_model.summary()
 
 """
@@ -342,7 +341,7 @@ contains the callbacks for model saving and tensorboard plugins.
 """
 
 
-class MyHyperModel(kt.HyperModel):
+class MyHyperModel(keras_tuner.HyperModel):
     def build(self, hp):
         model = keras.Sequential()
         model.add(layers.Flatten())
@@ -354,7 +353,9 @@ class MyHyperModel(kt.HyperModel):
         )
         model.add(layers.Dense(10, activation="softmax"))
         model.compile(
-            optimizer="adam", loss="categorical_crossentropy", metrics=["accuracy"],
+            optimizer="adam",
+            loss="categorical_crossentropy",
+            metrics=["accuracy"],
         )
         return model
 
@@ -371,7 +372,7 @@ class MyHyperModel(kt.HyperModel):
 Again, we can do a quick check to see if the code works correctly.
 """
 
-hp = kt.HyperParameters()
+hp = keras_tuner.HyperParameters()
 hypermodel = MyHyperModel()
 model = hypermodel.build(hp)
 hypermodel.fit(hp, model, np.random.rand(100, 28, 28), np.random.rand(100, 10))
@@ -388,7 +389,7 @@ because we need to use them.
 """
 
 
-class MyHyperModel(kt.HyperModel):
+class MyHyperModel(keras_tuner.HyperModel):
     def build(self, hp):
         model = keras.Sequential()
         model.add(layers.Flatten())
@@ -400,7 +401,9 @@ class MyHyperModel(kt.HyperModel):
         )
         model.add(layers.Dense(10, activation="softmax"))
         model.compile(
-            optimizer="adam", loss="categorical_crossentropy", metrics=["accuracy"],
+            optimizer="adam",
+            loss="categorical_crossentropy",
+            metrics=["accuracy"],
         )
         return model
 
@@ -416,7 +419,7 @@ class MyHyperModel(kt.HyperModel):
         )
 
 
-hp = kt.HyperParameters()
+hp = keras_tuner.HyperParameters()
 hypermodel = MyHyperModel()
 model = hypermodel.build(hp)
 hypermodel.fit(hp, model, np.random.rand(100, 28, 28), np.random.rand(100, 10))
@@ -429,7 +432,7 @@ used by data prerprocessing step to crop the images in `fit()`.
 """
 
 
-class MyHyperModel(kt.HyperModel):
+class MyHyperModel(keras_tuner.HyperModel):
     def build(self, hp):
         image_size = hp.Int("image_size", 10, 28)
         inputs = keras.Input(shape=(image_size, image_size))
@@ -441,7 +444,9 @@ class MyHyperModel(kt.HyperModel):
         outputs = layers.Dense(10, activation="softmax")(outputs)
         model = keras.Model(inputs, outputs)
         model.compile(
-            optimizer="adam", loss="categorical_crossentropy", metrics=["accuracy"],
+            optimizer="adam",
+            loss="categorical_crossentropy",
+            metrics=["accuracy"],
         )
         return model
 
@@ -464,7 +469,7 @@ class MyHyperModel(kt.HyperModel):
         )
 
 
-tuner = kt.RandomSearch(
+tuner = keras_tuner.RandomSearch(
     MyHyperModel(),
     objective="val_accuracy",
     max_trials=3,
@@ -500,6 +505,7 @@ There are many other built-in metrics in Keras you can use as the objective.
 Here is [a list of the built-in metrics](https://keras.io/api/metrics/).
 
 To use a built-in metric as the objective, you need to follow these steps:
+
 * Compile the model with the the built-in metric. For example, you want to use
 `MeanAbsoluteError()`. You need to compile the model with
 `metrics=[MeanAbsoluteError()]`. You may also use its name string instead:
@@ -511,11 +517,11 @@ always in the format of `f"val_{metric_name_string}"`. For example, the
 objective name string of mean squared error evaluated on the validation data
 should be `"val_mean_absolute_error"`.
 
-* Wrap it into `kt.Objective`. We usually need to wrap the objective into a
-`kt.Objective` object to specify the direction to optimize the objective. For
-example, we want to minimize the mean squared error, we can use
-`kt.Objective("val_mean_absolute_error", "min")`. The direction should be
-either `"min"` or `"max"`.
+* Wrap it into `keras_tuner.Objective`. We usually need to wrap the objective
+into a `keras_tuner.Objective` object to specify the direction to optimize the
+objective. For example, we want to minimize the mean squared error, we can use
+`keras_tuner.Objective("val_mean_absolute_error", "min")`. The direction should
+be either `"min"` or `"max"`.
 
 * Pass the wrapped objective to the tuner.
 
@@ -539,11 +545,11 @@ def build_regressor(hp):
     return model
 
 
-tuner = kt.RandomSearch(
+tuner = keras_tuner.RandomSearch(
     hypermodel=build_regressor,
     # The objective name and direction.
     # Name is the f"val_{snake_case_metric_class_name}".
-    objective=kt.Objective("val_mean_absolute_error", direction="min"),
+    objective=keras_tuner.Objective("val_mean_absolute_error", direction="min"),
     max_trials=3,
     overwrite=True,
     directory="my_dir",
@@ -565,7 +571,7 @@ You may implement your own metric and use it as the hyperparameter search
 objective. Here, we use mean squared error (MSE) as an example. First, we
 implement the MSE metric by subclassing `keras.metrics.Metric`. Remember to
 give a name to your metric using the `name` argument of `super().__init__()`,
-which will be used later. Note: MSE is actully a build-in metric, which can be
+which will be used later. Note: MSE is actually a build-in metric, which can be
 imported with `keras.metrics.MeanSquaredError`. This is just an example to show
 how to use a custom metric as the hyperparameter search objective.
 
@@ -578,7 +584,7 @@ tutorial](https://keras.io/guides/customizing_what_happens_in_fit/#going-lowerle
 
 """
 
-import tensorflow as tf
+from keras import ops
 
 
 class CustomMetric(keras.metrics.Metric):
@@ -586,22 +592,22 @@ class CustomMetric(keras.metrics.Metric):
         # Specify the name of the metric as "custom_metric".
         super().__init__(name="custom_metric", **kwargs)
         self.sum = self.add_weight(name="sum", initializer="zeros")
-        self.count = self.add_weight(name="count", dtype=tf.int32, initializer="zeros")
+        self.count = self.add_weight(name="count", dtype="int32", initializer="zeros")
 
     def update_state(self, y_true, y_pred, sample_weight=None):
-        values = tf.math.squared_difference(y_pred, y_true)
-        count = tf.shape(y_true)[0]
+        values = ops.square(y_true - y_pred)
+        count = ops.shape(y_true)[0]
         if sample_weight is not None:
-            sample_weight = tf.cast(sample_weight, self.dtype)
+            sample_weight = ops.cast(sample_weight, self.dtype)
             values *= sample_weight
             count *= sample_weight
-        self.sum.assign_add(tf.reduce_sum(values))
+        self.sum.assign_add(ops.sum(values))
         self.count.assign_add(count)
 
     def result(self):
-        return self.sum / tf.cast(self.count, tf.float32)
+        return self.sum / ops.cast(self.count, "float32")
 
-    def reset_states(self):
+    def reset_state(self):
         self.sum.assign(0)
         self.count.assign(0)
 
@@ -627,10 +633,10 @@ def build_regressor(hp):
     return model
 
 
-tuner = kt.RandomSearch(
+tuner = keras_tuner.RandomSearch(
     hypermodel=build_regressor,
     # Specify the name and direction of the objective.
-    objective=kt.Objective("val_custom_metric", direction="min"),
+    objective=keras_tuner.Objective("val_custom_metric", direction="min"),
     max_trials=3,
     overwrite=True,
     directory="my_dir",
@@ -656,7 +662,7 @@ TensorBoard view using the Keras metrics.
 """
 
 
-class HyperRegressor(kt.HyperModel):
+class HyperRegressor(keras_tuner.HyperModel):
     def build(self, hp):
         model = keras.Sequential(
             [
@@ -665,7 +671,8 @@ class HyperRegressor(kt.HyperModel):
             ]
         )
         model.compile(
-            optimizer="adam", loss="mean_squared_error",
+            optimizer="adam",
+            loss="mean_squared_error",
         )
         return model
 
@@ -677,7 +684,7 @@ class HyperRegressor(kt.HyperModel):
         return np.mean(np.abs(y_pred - y_val))
 
 
-tuner = kt.RandomSearch(
+tuner = keras_tuner.RandomSearch(
     hypermodel=HyperRegressor(),
     # No objective to specify.
     # Objective is the return value of `HyperModel.fit()`.
@@ -699,11 +706,11 @@ If you have multiple metrics to track in KerasTuner, but only use one of them
 as the objective, you can return a dictionary, whose keys are the metric names
 and the values are the metrics values, for example, return `{"metric_a": 1.0,
 "metric_b", 2.0}`. Use one of the keys as the objective name, for example,
-`kt.Objective("metric_a", "min")`.
+`keras_tuner.Objective("metric_a", "min")`.
 """
 
 
-class HyperRegressor(kt.HyperModel):
+class HyperRegressor(keras_tuner.HyperModel):
     def build(self, hp):
         model = keras.Sequential(
             [
@@ -712,7 +719,8 @@ class HyperRegressor(kt.HyperModel):
             ]
         )
         model.compile(
-            optimizer="adam", loss="mean_squared_error",
+            optimizer="adam",
+            loss="mean_squared_error",
         )
         return model
 
@@ -727,11 +735,11 @@ class HyperRegressor(kt.HyperModel):
         }
 
 
-tuner = kt.RandomSearch(
+tuner = keras_tuner.RandomSearch(
     hypermodel=HyperRegressor(),
     # Objective is one of the keys.
     # Maximize the negative MAE, equivalent to minimize MAE.
-    objective=kt.Objective("metric_a", "max"),
+    objective=keras_tuner.Objective("metric_a", "max"),
     max_trials=3,
     overwrite=True,
     directory="my_dir",
@@ -762,7 +770,7 @@ the tuner can be omitted.
 """
 
 
-class MyTuner(kt.RandomSearch):
+class MyTuner(keras_tuner.RandomSearch):
     def run_trial(self, trial, *args, **kwargs):
         # Get the hp from trial.
         hp = trial.hyperparameters
@@ -806,10 +814,14 @@ import os
 def keras_code(units, optimizer, saving_path):
     # Build model
     model = keras.Sequential(
-        [layers.Dense(units=units, activation="relu"), layers.Dense(units=1),]
+        [
+            layers.Dense(units=units, activation="relu"),
+            layers.Dense(units=1),
+        ]
     )
     model.compile(
-        optimizer=optimizer, loss="mean_squared_error",
+        optimizer=optimizer,
+        loss="mean_squared_error",
     )
 
     # Prepare data
@@ -831,23 +843,26 @@ def keras_code(units, optimizer, saving_path):
     return np.mean(np.abs(y_pred - y_val))
 
 
-class MyTuner(kt.RandomSearch):
+class MyTuner(keras_tuner.RandomSearch):
     def run_trial(self, trial, **kwargs):
         hp = trial.hyperparameters
         return keras_code(
             units=hp.Int("units", 32, 128, 32),
             optimizer=hp.Choice("optimizer", ["adam", "adadelta"]),
-            saving_path=os.path.join("/tmp", trial.trial_id),
+            saving_path=os.path.join("/tmp", f"{trial.trial_id}.keras"),
         )
 
 
 tuner = MyTuner(
-    max_trials=3, overwrite=True, directory="my_dir", project_name="keep_code_separate",
+    max_trials=3,
+    overwrite=True,
+    directory="my_dir",
+    project_name="keep_code_separate",
 )
 tuner.search()
 # Retraining the model
 best_hp = tuner.get_best_hyperparameters()[0]
-keras_code(**best_hp.values, saving_path="/tmp/best_model")
+keras_code(**best_hp.values, saving_path="/tmp/best_model.keras")
 
 """
 ## KerasTuner includes pre-made tunable applications: HyperResNet and HyperXception
@@ -863,15 +878,11 @@ from keras_tuner.applications import HyperResNet
 
 hypermodel = HyperResNet(input_shape=(28, 28, 1), classes=10)
 
-tuner = kt.RandomSearch(
+tuner = keras_tuner.RandomSearch(
     hypermodel,
     objective="val_accuracy",
     max_trials=2,
     overwrite=True,
     directory="my_dir",
     project_name="built_in_hypermodel",
-)
-
-tuner.search(
-    x_train[:100], y_train[:100], epochs=1, validation_data=(x_val[:100], y_val[:100])
 )

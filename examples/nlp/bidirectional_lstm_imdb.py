@@ -4,14 +4,16 @@ Author: [fchollet](https://twitter.com/fchollet)
 Date created: 2020/05/03
 Last modified: 2020/05/03
 Description: Train a 2-layer bidirectional LSTM on the IMDB movie review sentiment classification dataset.
+Accelerator: GPU
 """
+
 """
 ## Setup
 """
 
 import numpy as np
-from tensorflow import keras
-from tensorflow.keras import layers
+import keras
+from keras import layers
 
 max_features = 20000  # Only consider the top 20k words
 maxlen = 200  # Only consider the first 200 words of each movie review
@@ -43,12 +45,20 @@ print(len(x_train), "Training sequences")
 print(len(x_val), "Validation sequences")
 # Use pad_sequence to standardize sequence length:
 # this will truncate sequences longer than 200 words and zero-pad sequences shorter than 200 words.
-x_train = keras.preprocessing.sequence.pad_sequences(x_train, maxlen=maxlen)
-x_val = keras.preprocessing.sequence.pad_sequences(x_val, maxlen=maxlen)
+x_train = keras.utils.pad_sequences(x_train, maxlen=maxlen)
+x_val = keras.utils.pad_sequences(x_val, maxlen=maxlen)
 
 """
 ## Train and evaluate the model
+
+You can use the trained model hosted on [Hugging Face Hub](https://huggingface.co/keras-io/bidirectional-lstm-imdb)
+and try the demo on [Hugging Face Spaces](https://huggingface.co/spaces/keras-io/bidirectional_lstm_imdb).
 """
 
 model.compile(optimizer="adam", loss="binary_crossentropy", metrics=["accuracy"])
 model.fit(x_train, y_train, batch_size=32, epochs=2, validation_data=(x_val, y_val))
+
+"""
+## Relevant Chapters from Deep Learning with Python
+- [Chapter 14: Text classification](https://deeplearningwithpython.io/chapters/chapter14_text-classification)
+"""

@@ -4,7 +4,9 @@ Author: [Aritra Roy Gosthipaty](https://twitter.com/ariG23498)
 Date created: 2021/07/25
 Last modified: 2021/07/25
 Description: Deep dive into location-specific and channel-agnostic "involution" kernels.
+Accelerator: GPU
 """
+
 """
 ## Introduction
 
@@ -34,8 +36,12 @@ layer.
 ## Setup
 """
 
+import os
+
+os.environ["KERAS_BACKEND"] = "tensorflow"
+
 import tensorflow as tf
-from tensorflow import keras
+import keras
 import matplotlib.pyplot as plt
 
 # Set seed for reproducibility.
@@ -98,7 +104,7 @@ class Involution(keras.layers.Layer):
 
     def build(self, input_shape):
         # Get the shape of the input.
-        (_, height, width, num_channels) = input_shape
+        _, height, width, num_channels = input_shape
 
         # Scale the height and width with respect to the strides.
         height = height // self.stride
@@ -234,11 +240,14 @@ tutorial from Google.
 print("loading the CIFAR10 dataset...")
 (
     (train_images, train_labels),
-    (test_images, test_labels,),
+    (
+        test_images,
+        test_labels,
+    ),
 ) = keras.datasets.cifar10.load_data()
 
 # Normalize pixel values to be between 0 and 1.
-(train_images, test_images) = (train_images / 255.0, test_images / 255.0)
+train_images, test_images = (train_images / 255.0, test_images / 255.0)
 
 # Shuffle and batch the dataset.
 train_ds = (
@@ -426,32 +435,27 @@ in which self-attention belongs.
 """
 
 layer_names = ["inv_1", "inv_2", "inv_3"]
-outputs = [inv_model.get_layer(name).output for name in layer_names]
+outputs = [inv_model.get_layer(name).output[1] for name in layer_names]
 vis_model = keras.Model(inv_model.input, outputs)
 
 fig, axes = plt.subplots(nrows=10, ncols=4, figsize=(10, 30))
 
 for ax, test_image in zip(axes, test_images[:10]):
-    (inv1_out, inv2_out, inv3_out) = vis_model.predict(test_image[None, ...])
-
-    _, inv1_kernel = inv1_out
-    _, inv2_kernel = inv2_out
-    _, inv3_kernel = inv3_out
-
+    inv1_kernel, inv2_kernel, inv3_kernel = vis_model.predict(test_image[None, ...])
     inv1_kernel = tf.reduce_sum(inv1_kernel, axis=[-1, -2, -3])
     inv2_kernel = tf.reduce_sum(inv2_kernel, axis=[-1, -2, -3])
     inv3_kernel = tf.reduce_sum(inv3_kernel, axis=[-1, -2, -3])
 
-    ax[0].imshow(keras.preprocessing.image.array_to_img(test_image))
+    ax[0].imshow(keras.utils.array_to_img(test_image))
     ax[0].set_title("Input Image")
 
-    ax[1].imshow(keras.preprocessing.image.array_to_img(inv1_kernel[0, ..., None]))
+    ax[1].imshow(keras.utils.array_to_img(inv1_kernel[0, ..., None]))
     ax[1].set_title("Involution Kernel 1")
 
-    ax[2].imshow(keras.preprocessing.image.array_to_img(inv2_kernel[0, ..., None]))
+    ax[2].imshow(keras.utils.array_to_img(inv2_kernel[0, ..., None]))
     ax[2].set_title("Involution Kernel 2")
 
-    ax[3].imshow(keras.preprocessing.image.array_to_img(inv3_kernel[0, ..., None]))
+    ax[3].imshow(keras.utils.array_to_img(inv3_kernel[0, ..., None]))
     ax[3].set_title("Involution Kernel 3")
 
 """
@@ -473,4 +477,12 @@ Moving forward one can:
 - Experiment with the various hyperparameters of the involution layer.
 - Build different models with the involution layer.
 - Try building a different kernel generation method altogether.
+
+You can use the trained model hosted on [Hugging Face Hub](https://huggingface.co/keras-io/involution)
+and try the demo on [Hugging Face Spaces](https://huggingface.co/spaces/keras-io/involution).
+"""
+
+"""
+## Relevant Chapters from Deep Learning with Python
+- [Chapter 9: ConvNet architecture patterns](https://deeplearningwithpython.io/chapters/chapter09_convnet-architecture-patterns)
 """

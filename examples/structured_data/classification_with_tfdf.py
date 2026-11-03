@@ -4,6 +4,7 @@ Author: [Khalid Salama](https://www.linkedin.com/in/khalid-salama-24403144/)
 Date created: 2022/01/25
 Last modified: 2022/01/25
 Description: Using TensorFlow Decision Forests for structured data classification.
+Accelerator: GPU
 """
 
 """
@@ -67,7 +68,7 @@ and 34 categorical features.
 First we load the data from the UCI Machine Learning Repository into a Pandas DataFrame.
 """
 
-BASE_PATH = "https://archive.ics.uci.edu/ml/machine-learning-databases/census-income-mld/census-income"
+BASE_PATH = "https://kdd.ics.uci.edu/databases/census-income/census-income"
 CSV_HEADER = [
     l.decode("utf-8").split(":")[0].replace(" ", "_")
     for l in urllib.request.urlopen(f"{BASE_PATH}.names")
@@ -75,8 +76,16 @@ CSV_HEADER = [
 ][2:]
 CSV_HEADER.append("income_level")
 
-train_data = pd.read_csv(f"{BASE_PATH}.data.gz", header=None, names=CSV_HEADER,)
-test_data = pd.read_csv(f"{BASE_PATH}.test.gz", header=None, names=CSV_HEADER,)
+train_data = pd.read_csv(
+    f"{BASE_PATH}.data.gz",
+    header=None,
+    names=CSV_HEADER,
+)
+test_data = pd.read_csv(
+    f"{BASE_PATH}.test.gz",
+    header=None,
+    names=CSV_HEADER,
+)
 
 """
 ## Define dataset metadata
@@ -198,7 +207,6 @@ Therefore, the default `num_epochs=1` is used in the `run_experiment()` method.
 
 
 def run_experiment(model, train_data, test_data, num_epochs=1, batch_size=None):
-
     train_dataset = tfdf.keras.pd_dataframe_to_tf_dataset(
         train_data, label=TARGET_COLUMN_NAME, weight=WEIGHT_COLUMN_NAME
     )
@@ -353,15 +361,15 @@ class BinaryTargetEncoding(layers.Layer):
 
         # Filter the data where the target label is positive.
         positive_indices = tf.where(condition=target_values)
-        postive_feature_values = tf.gather_nd(
+        positive_feature_values = tf.gather_nd(
             params=feature_values, indices=positive_indices
         )
         # Compute how many times each feature value occurred with a positive target label.
         positive_frequency = tf.math.unsorted_segment_sum(
             data=tf.ones(
-                shape=(postive_feature_values.shape[0], 1), dtype=tf.dtypes.float64
+                shape=(positive_feature_values.shape[0], 1), dtype=tf.dtypes.float64
             ),
-            segment_ids=postive_feature_values,
+            segment_ids=positive_feature_values,
             num_segments=self.vocabulary_size,
         )
 
@@ -518,7 +526,6 @@ and let the model infer semantics of the input features.
 
 
 def create_gbt_with_preprocessor(preprocessor):
-
     gbt_model = tfdf.keras.GradientBoostedTreesModel(
         preprocessing=preprocessor,
         num_trees=NUM_TREES,

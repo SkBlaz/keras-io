@@ -1,10 +1,12 @@
 """
 Title: Keypoint Detection with Transfer Learning
-Author: [Sayak Paul](https://twitter.com/RisingSayak)
+Author: [Sayak Paul](https://twitter.com/RisingSayak), converted to Keras 3 by [Muhammad Anas Raza](https://anasrz.com)
 Date created: 2021/05/02
-Last modified: 2021/05/02
+Last modified: 2023/07/19
 Description: Training a keypoint detector with data augmentation and transfer learning.
+Accelerator: GPU
 """
+
 """
 Keypoint detection consists of locating key object parts. For example, the key parts
 of our faces include nose tips, eyebrows, eye corners, and so on. These parts help to
@@ -55,10 +57,8 @@ unzip -qq ~/stanfordextra_v12.zip
 """
 ## Imports
 """
-
-from tensorflow.keras import layers
-from tensorflow import keras
-import tensorflow as tf
+from keras import layers
+import keras
 
 from imgaug.augmentables.kps import KeypointsOnImage
 from imgaug.augmentables.kps import Keypoint
@@ -167,6 +167,7 @@ colours = keypoint_def["Hex colour"].values.tolist()
 colours = ["#" + colour for colour in colours]
 labels = keypoint_def["Name"].values.tolist()
 
+
 # Utility for reading an image and for getting its annotations.
 def get_dog(name):
     data = json_dict[name]
@@ -187,6 +188,7 @@ def get_dog(name):
 Now, we write a utility function to visualize the images and their keypoints.
 """
 
+
 # Parts of this code come from here:
 # https://github.com/benjiebob/StanfordExtra/blob/master/demo.ipynb
 def visualize_keypoints(images, keypoints):
@@ -202,7 +204,12 @@ def visualize_keypoints(images, keypoints):
         if isinstance(current_keypoint, KeypointsOnImage):
             for idx, kp in enumerate(current_keypoint.keypoints):
                 ax_all.scatter(
-                    [kp.x], [kp.y], c=colours[idx], marker="x", s=50, linewidths=5
+                    [kp.x],
+                    [kp.y],
+                    c=colours[idx],
+                    marker="x",
+                    s=50,
+                    linewidths=5,
                 )
         else:
             current_keypoint = np.array(current_keypoint)
@@ -248,8 +255,9 @@ that applies data augmentation on batches of data using `imgaug`.
 """
 
 
-class KeyPointsDataset(keras.utils.Sequence):
-    def __init__(self, image_keys, aug, batch_size=BATCH_SIZE, train=True):
+class KeyPointsDataset(keras.utils.PyDataset):
+    def __init__(self, image_keys, aug, batch_size=BATCH_SIZE, train=True, **kwargs):
+        super().__init__(**kwargs)
         self.image_keys = image_keys
         self.aug = aug
         self.batch_size = batch_size
@@ -267,7 +275,7 @@ class KeyPointsDataset(keras.utils.Sequence):
     def __getitem__(self, index):
         indexes = self.indexes[index * self.batch_size : (index + 1) * self.batch_size]
         image_keys_temp = [self.image_keys[k] for k in indexes]
-        (images, keypoints) = self.__data_generation(image_keys_temp)
+        images, keypoints = self.__data_generation(image_keys_temp)
 
         return (images, keypoints)
 
@@ -292,7 +300,7 @@ class KeyPointsDataset(keras.utils.Sequence):
             kps_obj = KeypointsOnImage(kps, shape=current_image.shape)
 
             # Apply the augmentation pipeline.
-            (new_image, new_kps_obj) = self.aug(image=current_image, keypoints=kps_obj)
+            new_image, new_kps_obj = self.aug(image=current_image, keypoints=kps_obj)
             batch_images[i,] = new_image
 
             # Parse the coordinates from the new keypoint object.
@@ -346,8 +354,12 @@ train_keys, validation_keys = (
 ## Data generator investigation
 """
 
-train_dataset = KeyPointsDataset(train_keys, train_aug)
-validation_dataset = KeyPointsDataset(validation_keys, test_aug, train=False)
+train_dataset = KeyPointsDataset(
+    train_keys, train_aug, workers=2, use_multiprocessing=True
+)
+validation_dataset = KeyPointsDataset(
+    validation_keys, test_aug, train=False, workers=2, use_multiprocessing=True
+)
 
 print(f"Total batches in training set: {len(train_dataset)}")
 print(f"Total batches in validation set: {len(validation_dataset)}")
@@ -374,7 +386,9 @@ head for predicting coordinates.
 def get_model():
     # Load the pre-trained weights of MobileNetV2 and freeze the weights
     backbone = keras.applications.MobileNetV2(
-        weights="imagenet", include_top=False, input_shape=(IMG_SIZE, IMG_SIZE, 3)
+        weights="imagenet",
+        include_top=False,
+        input_shape=(IMG_SIZE, IMG_SIZE, 3),
     )
     backbone.trainable = False
 
@@ -442,4 +456,9 @@ the results.
 not [fine-tune](https://keras.io/guides/transfer_learning/) it. You are encouraged to fine-tune it on this task and see if that
 improves the performance. You can also try different architectures and see how they
 affect the final performance.
+"""
+
+"""
+## Relevant Chapters from Deep Learning with Python
+- [Chapter 12: Object detection](https://deeplearningwithpython.io/chapters/chapter12_object-detection)
 """

@@ -2,8 +2,9 @@
 Title: CycleGAN
 Author: [A_K_Nain](https://twitter.com/A_K_Nain)
 Date created: 2020/08/12
-Last modified: 2020/08/12
+Last modified: 2024/09/30
 Description: Implementation of CycleGAN.
+Accelerator: GPU
 """
 
 """
@@ -16,7 +17,7 @@ aligned image pairs. However, obtaining paired examples isn't always feasible.
 CycleGAN tries to learn this mapping without requiring paired input-output images,
 using cycle-consistent adversarial networks.
 
-- [Paper](https://arxiv.org/pdf/1703.10593.pdf)
+- [Paper](https://arxiv.org/abs/1703.10593)
 - [Original implementation](https://github.com/junyanz/pytorch-CycleGAN-and-pix2pix)
 """
 
@@ -27,17 +28,15 @@ using cycle-consistent adversarial networks.
 import os
 import numpy as np
 import matplotlib.pyplot as plt
-
 import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras import layers
-
-import tensorflow_addons as tfa
+import keras
+from keras import layers, ops
 import tensorflow_datasets as tfds
 
 tfds.disable_progress_bar()
 autotune = tf.data.AUTOTUNE
 
+os.environ["KERAS_BACKEND"] = "tensorflow"
 
 """
 ## Prepare the dataset
@@ -48,7 +47,7 @@ dataset.
 """
 
 # Load the horse-zebra dataset using tensorflow-datasets.
-dataset, _ = tfds.load("cycle_gan/horse2zebra", with_info=True, as_supervised=True)
+dataset, _ = tfds.load(name="cycle_gan/horse2zebra", with_info=True, as_supervised=True)
 train_horses, train_zebras = dataset["trainA"], dataset["trainB"]
 test_horses, test_zebras = dataset["testA"], dataset["testB"]
 
@@ -66,7 +65,7 @@ batch_size = 1
 
 
 def normalize_img(img):
-    img = tf.cast(img, dtype=tf.float32)
+    img = ops.cast(img, dtype=tf.float32)
     # Map values in the range [-1, 1]
     return (img / 127.5) - 1.0
 
@@ -75,7 +74,7 @@ def preprocess_train_image(img, label):
     # Random flip
     img = tf.image.random_flip_left_right(img)
     # Resize to the original size first
-    img = tf.image.resize(img, [*orig_img_size])
+    img = ops.image.resize(img, [*orig_img_size])
     # Random crop to 256X256
     img = tf.image.random_crop(img, size=[*input_img_size])
     # Normalize the pixel values in the range [-1, 1]
@@ -85,7 +84,7 @@ def preprocess_train_image(img, label):
 
 def preprocess_test_image(img, label):
     # Only resizing and normalization for the test images.
-    img = tf.image.resize(img, [input_img_size[0], input_img_size[1]])
+    img = ops.image.resize(img, [input_img_size[0], input_img_size[1]])
     img = normalize_img(img)
     return img
 
@@ -156,7 +155,7 @@ class ReflectionPadding2D(layers.Layer):
 
     def __init__(self, padding=(1, 1), **kwargs):
         self.padding = tuple(padding)
-        super(ReflectionPadding2D, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
     def call(self, input_tensor, mask=None):
         padding_width, padding_height = self.padding
@@ -166,7 +165,7 @@ class ReflectionPadding2D(layers.Layer):
             [padding_width, padding_width],
             [0, 0],
         ]
-        return tf.pad(input_tensor, padding_tensor, mode="REFLECT")
+        return ops.pad(input_tensor, padding_tensor, mode="REFLECT")
 
 
 def residual_block(
@@ -191,7 +190,9 @@ def residual_block(
         padding=padding,
         use_bias=use_bias,
     )(x)
-    x = tfa.layers.InstanceNormalization(gamma_initializer=gamma_initializer)(x)
+    x = keras.layers.GroupNormalization(groups=1, gamma_initializer=gamma_initializer)(
+        x
+    )
     x = activation(x)
 
     x = ReflectionPadding2D()(x)
@@ -203,7 +204,9 @@ def residual_block(
         padding=padding,
         use_bias=use_bias,
     )(x)
-    x = tfa.layers.InstanceNormalization(gamma_initializer=gamma_initializer)(x)
+    x = keras.layers.GroupNormalization(groups=1, gamma_initializer=gamma_initializer)(
+        x
+    )
     x = layers.add([input_tensor, x])
     return x
 
@@ -227,7 +230,9 @@ def downsample(
         padding=padding,
         use_bias=use_bias,
     )(x)
-    x = tfa.layers.InstanceNormalization(gamma_initializer=gamma_initializer)(x)
+    x = keras.layers.GroupNormalization(groups=1, gamma_initializer=gamma_initializer)(
+        x
+    )
     if activation:
         x = activation(x)
     return x
@@ -252,7 +257,9 @@ def upsample(
         kernel_initializer=kernel_initializer,
         use_bias=use_bias,
     )(x)
-    x = tfa.layers.InstanceNormalization(gamma_initializer=gamma_initializer)(x)
+    x = keras.layers.GroupNormalization(groups=1, gamma_initializer=gamma_initializer)(
+        x
+    )
     if activation:
         x = activation(x)
     return x
@@ -299,7 +306,9 @@ def get_resnet_generator(
     x = layers.Conv2D(filters, (7, 7), kernel_initializer=kernel_init, use_bias=False)(
         x
     )
-    x = tfa.layers.InstanceNormalization(gamma_initializer=gamma_initializer)(x)
+    x = keras.layers.GroupNormalization(groups=1, gamma_initializer=gamma_initializer)(
+        x
+    )
     x = layers.Activation("relu")(x)
 
     # Downsampling
@@ -401,13 +410,21 @@ class CycleGan(keras.Model):
         lambda_cycle=10.0,
         lambda_identity=0.5,
     ):
-        super(CycleGan, self).__init__()
+        super().__init__()
         self.gen_G = generator_G
         self.gen_F = generator_F
         self.disc_X = discriminator_X
         self.disc_Y = discriminator_Y
         self.lambda_cycle = lambda_cycle
         self.lambda_identity = lambda_identity
+
+    def call(self, inputs):
+        return (
+            self.disc_X(inputs),
+            self.disc_Y(inputs),
+            self.gen_G(inputs),
+            self.gen_F(inputs),
+        )
 
     def compile(
         self,
@@ -418,7 +435,7 @@ class CycleGan(keras.Model):
         gen_loss_fn,
         disc_loss_fn,
     ):
-        super(CycleGan, self).compile()
+        super().compile()
         self.gen_G_optimizer = gen_G_optimizer
         self.gen_F_optimizer = gen_F_optimizer
         self.disc_X_optimizer = disc_X_optimizer
@@ -438,10 +455,10 @@ class CycleGan(keras.Model):
         #
         # 1. Pass real images through the generators and get the generated images
         # 2. Pass the generated images back to the generators to check if we
-        #    we can predict the original image from the generated image.
+        #    can predict the original image from the generated image.
         # 3. Do an identity mapping of the real images using the generators.
         # 4. Pass the generated images in 1) to the corresponding discriminators.
-        # 5. Calculate the generators total loss (adverserial + cycle + identity)
+        # 5. Calculate the generators total loss (adversarial + cycle + identity)
         # 6. Calculate the discriminators loss
         # 7. Update the weights of the generators
         # 8. Update the weights of the discriminators
@@ -469,7 +486,7 @@ class CycleGan(keras.Model):
             disc_real_y = self.disc_Y(real_y, training=True)
             disc_fake_y = self.disc_Y(fake_y, training=True)
 
-            # Generator adverserial loss
+            # Generator adversarial loss
             gen_G_loss = self.generator_loss_fn(disc_fake_y)
             gen_F_loss = self.generator_loss_fn(disc_fake_x)
 
@@ -554,7 +571,7 @@ class GANMonitor(keras.callbacks.Callback):
             ax[i, 0].axis("off")
             ax[i, 1].axis("off")
 
-            prediction = keras.preprocessing.image.array_to_img(prediction)
+            prediction = keras.utils.array_to_img(prediction)
             prediction.save(
                 "generated_img_{i}_{epoch}.png".format(i=i, epoch=epoch + 1)
             )
@@ -571,15 +588,17 @@ class GANMonitor(keras.callbacks.Callback):
 adv_loss_fn = keras.losses.MeanSquaredError()
 
 # Define the loss function for the generators
+
+
 def generator_loss_fn(fake):
-    fake_loss = adv_loss_fn(tf.ones_like(fake), fake)
+    fake_loss = adv_loss_fn(ops.ones_like(fake), fake)
     return fake_loss
 
 
 # Define the loss function for the discriminators
 def discriminator_loss_fn(real, fake):
-    real_loss = adv_loss_fn(tf.ones_like(real), real)
-    fake_loss = adv_loss_fn(tf.zeros_like(fake), fake)
+    real_loss = adv_loss_fn(ops.ones_like(real), real)
+    fake_loss = adv_loss_fn(ops.zeros_like(fake), fake)
     return (real_loss + fake_loss) * 0.5
 
 
@@ -599,16 +618,16 @@ cycle_gan_model.compile(
 )
 # Callbacks
 plotter = GANMonitor()
-checkpoint_filepath = "./model_checkpoints/cyclegan_checkpoints.{epoch:03d}"
+checkpoint_filepath = "./model_checkpoints/cyclegan_checkpoints.weights.h5"
 model_checkpoint_callback = keras.callbacks.ModelCheckpoint(
-    filepath=checkpoint_filepath
+    filepath=checkpoint_filepath, save_weights_only=True
 )
 
 # Here we will train the model for just one epoch as each epoch takes around
 # 7 minutes on a single P100 backed machine.
 cycle_gan_model.fit(
     tf.data.Dataset.zip((train_horses, train_zebras)),
-    epochs=1,
+    epochs=90,
     callbacks=[plotter, model_checkpoint_callback],
 )
 
@@ -617,19 +636,11 @@ Test the performance of the model.
 """
 
 
-# This model was trained for 90 epochs. We will be loading those weights
-# here. Once the weights are loaded, we will take a few samples from the test
-# data and check the model's performance.
-
-"""shell
-curl -LO https://github.com/AakashKumarNain/CycleGAN_TF2/releases/download/v1.0/saved_checkpoints.zip
-unzip -qq saved_checkpoints.zip
-"""
+# Once the weights are loaded, we will take a few samples from the test data and check the model's performance.
 
 
 # Load the checkpoints
-weight_file = "./saved_checkpoints/cyclegan_checkpoints.090"
-cycle_gan_model.load_weights(weight_file).expect_partial()
+cycle_gan_model.load_weights(checkpoint_filepath)
 print("Weights loaded successfully")
 
 _, ax = plt.subplots(4, 2, figsize=(10, 15))
@@ -646,7 +657,12 @@ for i, img in enumerate(test_horses.take(4)):
     ax[i, 0].axis("off")
     ax[i, 1].axis("off")
 
-    prediction = keras.preprocessing.image.array_to_img(prediction)
+    prediction = keras.utils.array_to_img(prediction)
     prediction.save("predicted_img_{i}.png".format(i=i))
 plt.tight_layout()
 plt.show()
+
+"""
+## Relevant Chapters from Deep Learning with Python
+- [Chapter 17: Image generation](https://deeplearningwithpython.io/chapters/chapter17_image-generation)
+"""

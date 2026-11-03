@@ -4,7 +4,9 @@ Author: Amy MiHyun Jang
 Date created: 2020/07/29
 Last modified: 2020/08/07
 Description: Loading TFRecords for computer vision models.
+Accelerator: TPU
 """
+
 """
 ## Introduction + Set Up
 
@@ -82,7 +84,9 @@ def read_tfrecord(example, labeled):
             "target": tf.io.FixedLenFeature([], tf.int64),
         }
         if labeled
-        else {"image": tf.io.FixedLenFeature([], tf.string),}
+        else {
+            "image": tf.io.FixedLenFeature([], tf.string),
+        }
     )
     example = tf.io.parse_single_example(example, tfrecord_format)
     image = decode_image(example["image"])
@@ -256,3 +260,8 @@ def show_batch_predictions(image_batch):
 image_batch = next(iter(test_dataset))
 
 show_batch_predictions(image_batch)
+
+"""
+## Relevant Chapters from Deep Learning with Python
+- [Chapter 6: The universal workflow of machine learning](https://deeplearningwithpython.io/chapters/chapter06_universal-workflow-of-ml)
+"""

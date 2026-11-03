@@ -4,7 +4,9 @@ Author: [lukewood](https://lukewood.xyz)
 Date created: 2021/08/28
 Last modified: 2021/08/28
 Description: Overview of how to use the TensorFlow NumPy API to write Keras models.
+Accelerator: GPU
 """
+
 """
 ## Introduction
 
@@ -23,36 +25,32 @@ Let's run through a few examples.
 
 """
 ## Setup
-TensorFlow NumPy requires TensorFlow 2.5 or later.
 """
+
+import os
+
+os.environ["KERAS_BACKEND"] = "tensorflow"
 
 import tensorflow as tf
 import tensorflow.experimental.numpy as tnp
 import keras
-import keras.layers as layers
-import numpy as np
-
-"""
-Optionally, you can call `tnp.experimental_enable_numpy_behavior()` to enable type promotion in TensorFlow.
-This allows TNP to more closely follow the NumPy standard.
-"""
-
-tnp.experimental_enable_numpy_behavior()
+from keras import layers
 
 """
 To test our models we will use the Boston housing prices regression dataset.
 """
 
-(x_train, y_train), (x_test, y_test) = tf.keras.datasets.boston_housing.load_data(
+(x_train, y_train), (x_test, y_test) = keras.datasets.boston_housing.load_data(
     path="boston_housing.npz", test_split=0.2, seed=113
 )
+input_dim = x_train.shape[1]
 
 
 def evaluate_model(model: keras.Model):
-    [loss, percent_error] = model.evaluate(x_test, y_test, verbose=0)
+    loss, percent_error = model.evaluate(x_test, y_test, verbose=0)
     print("Mean absolute percent error before training: ", percent_error)
     model.fit(x_train, y_train, epochs=200, verbose=0)
-    [loss, percent_error] = model.evaluate(x_test, y_test, verbose=0)
+    loss, percent_error = model.evaluate(x_test, y_test, verbose=0)
     print("Mean absolute percent error after training:", percent_error)
 
 
@@ -74,7 +72,7 @@ First let's define a simple `TNPForwardFeedRegressionNetwork` class.
 
 class TNPForwardFeedRegressionNetwork(keras.Model):
     def __init__(self, blocks=None, **kwargs):
-        super(TNPForwardFeedRegressionNetwork, self).__init__(**kwargs)
+        super().__init__(**kwargs)
         if not isinstance(blocks, list):
             raise ValueError(f"blocks must be a list, got blocks={blocks}")
         self.blocks = blocks
@@ -88,16 +86,27 @@ class TNPForwardFeedRegressionNetwork(keras.Model):
         for i, block in enumerate(self.blocks):
             self.block_weights.append(
                 self.add_weight(
-                    shape=(current_shape, block), trainable=True, name=f"block-{i}"
+                    shape=(current_shape, block),
+                    trainable=True,
+                    name=f"block-{i}",
+                    initializer="glorot_normal",
                 )
             )
             self.biases.append(
-                self.add_weight(shape=(block,), trainable=True, name=f"bias-{i}")
+                self.add_weight(
+                    shape=(block,),
+                    trainable=True,
+                    name=f"bias-{i}",
+                    initializer="zeros",
+                )
             )
             current_shape = block
 
         self.linear_layer = self.add_weight(
-            shape=(current_shape, 1), name="linear_projector", trainable=True
+            shape=(current_shape, 1),
+            name="linear_projector",
+            trainable=True,
+            initializer="glorot_normal",
         )
 
     def call(self, inputs):
@@ -126,7 +135,7 @@ model.compile(
 evaluate_model(model)
 
 """
-Great!  Our model seems to be effectively learning to solve the problem at hand.
+Great! Our model seems to be effectively learning to solve the problem at hand.
 
 We can also write our own custom loss function using TNP.
 """
@@ -173,7 +182,7 @@ class TNPDense(keras.layers.Layer):
         self.bias = self.add_weight(
             name="bias",
             shape=(self.units,),
-            initializer="random_normal",
+            initializer="zeros",
             trainable=True,
         )
 
@@ -200,7 +209,7 @@ model.compile(
     loss="mean_squared_error",
     metrics=[keras.metrics.MeanAbsolutePercentageError()],
 )
-model.build((None, 13,))
+model.build((None, input_dim))
 model.summary()
 
 evaluate_model(model)
@@ -228,7 +237,7 @@ model.compile(
     loss="mean_squared_error",
     metrics=[keras.metrics.MeanAbsolutePercentageError()],
 )
-model.build((None, 13,))
+model.build((None, input_dim))
 model.summary()
 
 evaluate_model(model)
@@ -262,7 +271,7 @@ with strategy.scope():
         loss="mean_squared_error",
         metrics=[keras.metrics.MeanAbsolutePercentageError()],
     )
-    model.build((None, 13,))
+    model.build((None, input_dim))
     model.summary()
     evaluate_model(model)
 
@@ -285,7 +294,10 @@ To load the TensorBoard from a Jupyter notebook, you can run the following magic
 """
 
 models = [
-    (TNPForwardFeedRegressionNetwork(blocks=[3, 3]), "TNPForwardFeedRegressionNetwork"),
+    (
+        TNPForwardFeedRegressionNetwork(blocks=[3, 3]),
+        "TNPForwardFeedRegressionNetwork",
+    ),
     (create_layered_tnp_model(), "layered_tnp_model"),
     (create_mixed_model(), "mixed_model"),
 ]
@@ -332,4 +344,9 @@ Migrating a more complex model, such as a ResNet, to the TensorFlow NumPy API wo
 great follow up learning exercise.
 
 Several open source NumPy ResNet implementations are available online.
+"""
+
+"""
+## Relevant Chapters from Deep Learning with Python
+- [Chapter 7: A deep dive on Keras](https://deeplearningwithpython.io/chapters/chapter07_deep-dive-keras)
 """
